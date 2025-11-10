@@ -555,10 +555,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   enemyConfig: {fileID: 11400000, guid: 9cfc332f5bd77df479859a5d1b5c287f, type: 2}
-  groundCheckDistance: 0.1
+  groundCheckDistance: 3
   groundMask:
     serializedVersion: 2
-    m_Bits: 1
+    m_Bits: 8
 --- !u!114 &213982817
 MonoBehaviour:
   m_ObjectHideFlags: 0

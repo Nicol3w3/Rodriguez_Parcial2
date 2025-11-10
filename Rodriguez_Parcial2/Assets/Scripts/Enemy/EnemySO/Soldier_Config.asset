@@ -24,10 +24,10 @@ MonoBehaviour:
   detectionAngle: 90
   targetMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 64
   obstructionMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 8
   damageToPlayer: 5
   canDealDamage: 1
   enemyMaterial: {fileID: 0}
