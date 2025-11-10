@@ -1,7 +1,7 @@
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
-public class FixEnemyPhysics : MonoBehaviour
+public class EnemyRB : MonoBehaviour
 {
     [Header("Configuración para evitar tambaleo")]
     public bool fixPhysicsOnStart = true;
@@ -23,42 +23,42 @@ public class FixEnemyPhysics : MonoBehaviour
     {
         rb = GetComponent<Rigidbody>();
         
-        // Configuración corregida
+        // Configuración corregida para Unity 6
         rb.mass = desiredMass;
         rb.linearDamping = desiredDrag;
         rb.angularDamping = 8f;
         rb.useGravity = true;
-        rb.isKinematic = false; // ¡IMPORTANTE!
+        rb.isKinematic = false;
         
         // Congelar rotaciones para evitar tambaleo
-        rb.constraints = RigidbodyConstraints.FreezeRotationX | 
-                        RigidbodyConstraints.FreezeRotationZ;
+        rb.freezeRotation = true; // Nueva forma en Unity 6
         
         // Configuración de colisión
         rb.interpolation = RigidbodyInterpolation.Interpolate;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         
-//        Debug.Log("Física del enemigo corregida", gameObject);
+        Debug.Log("✅ Física del enemigo corregida: " + gameObject.name);
     }
 
-    // Método para aplicar knockback controlado
-    public void ApplyControlledKnockback(Vector3 force, float upwardReduction = 0.3f)
-    {
-        Vector3 controlledForce = new Vector3(
-            force.x,
-            force.y * upwardReduction, // Reducir fuerza vertical
-            force.z
-        );
-        
-        rb.AddForce(controlledForce, ForceMode.Impulse);
-    }
-
-    // Limitar velocidad máxima para evitar movimiento excesivo
     void FixedUpdate()
     {
+        // Limitar velocidad máxima para evitar movimiento excesivo
         if (rb.linearVelocity.magnitude > 15f)
         {
             rb.linearVelocity = Vector3.ClampMagnitude(rb.linearVelocity, 15f);
+        }
+        
+        // Fuerza anti-caída - mantener en altura mínima
+        if (transform.position.y < 0.5f)
+        {
+            Vector3 pos = transform.position;
+            pos.y = 1.0f;
+            rb.MovePosition(pos);
+            
+            // Resetear velocidad vertical
+            Vector3 velocity = rb.linearVelocity;
+            velocity.y = 0;
+            rb.linearVelocity = velocity;
         }
     }
 }

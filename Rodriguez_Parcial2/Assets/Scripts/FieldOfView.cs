@@ -12,14 +12,16 @@ public class FieldOfView : MonoBehaviour
     public LayerMask obstructionMask;
     public bool canSeePlayer;
 
-    // ✅ NUEVO: Referencia al AIController
     private AIController aiController;
 
     private void Start()
     {
-        playerRef = GameObject.FindGameObjectWithTag("Player");
+        // Buscar player si no está asignado
+        if (playerRef == null)
+        {
+            playerRef = GameObject.FindGameObjectWithTag("Player");
+        }
         
-        // ✅ OBTENER referencia al AIController
         aiController = GetComponent<AIController>();
         if (aiController == null)
         {
@@ -29,6 +31,10 @@ public class FieldOfView : MonoBehaviour
         if (playerRef == null)
         {
             Debug.LogError("No se encontró objeto con tag 'Player'");
+        }
+        else
+        {
+//            Debug.Log($"✅ FieldOfView - Player asignado: {playerRef.name}");
         }
         
         StartCoroutine(FOVRoutine());
@@ -46,7 +52,7 @@ public class FieldOfView : MonoBehaviour
 
     private void FieldOfViewCheck()
     {
-        // ✅ BLOQUEAR detección si el enemigo está muerto
+        // Bloquear detección si está muerto
         if (aiController != null && aiController.IsDead())
         {
             canSeePlayer = false;
@@ -59,40 +65,90 @@ public class FieldOfView : MonoBehaviour
             return;
         }
 
-        Collider[] rangeChecks = Physics.OverlapSphere(transform.position, radius, targetMask);
+        // VERIFICACIÓN MEJORADA - Buscar específicamente al player
+        bool playerInRange = false;
+        bool playerInAngle = false;
+        bool noObstruction = false;
 
-        if (rangeChecks.Length != 0)
+        // 1. Verificar si el player está en rango
+        float distanceToPlayer = Vector3.Distance(transform.position, playerRef.transform.position);
+        playerInRange = distanceToPlayer <= radius;
+
+        if (playerInRange)
         {
-            Transform target = rangeChecks[0].transform;
-            Vector3 directionToTarget = (target.position - transform.position).normalized;
+            // 2. Verificar si está dentro del ángulo
+            Vector3 directionToPlayer = (playerRef.transform.position - transform.position).normalized;
+            float angleToPlayer = Vector3.Angle(transform.forward, directionToPlayer);
+            playerInAngle = angleToPlayer < angle / 2;
 
-            if (Vector3.Angle(transform.forward, directionToTarget) < angle / 2)
+            if (playerInAngle)
             {
-                float distanceToTarget = Vector3.Distance(transform.position, target.position);
-                canSeePlayer = !Physics.Raycast(transform.position, directionToTarget, distanceToTarget, obstructionMask);
-            }
-            else
-            {
-                canSeePlayer = false;
+                // 3. Verificar que no haya obstrucciones
+                noObstruction = !Physics.Raycast(transform.position, directionToPlayer, distanceToPlayer, obstructionMask);
             }
         }
-        else
+
+        canSeePlayer = playerInRange && playerInAngle && noObstruction;
+
+        // DEBUG DETALLADO
+        if (playerInRange)
         {
-            canSeePlayer = false;
+            Vector3 directionToPlayer = (playerRef.transform.position - transform.position).normalized;
+            float angleToPlayer = Vector3.Angle(transform.forward, directionToPlayer);
+            
+            string debugMsg = $"Player en rango: {playerInRange} (distancia: {distanceToPlayer:F1}/{radius}), " +
+                            $"en ángulo: {playerInAngle} ({angleToPlayer:F1}/{angle/2}), " +
+                            $"sin obstrucción: {noObstruction}, " +
+                            $"CAN SEE: {canSeePlayer}";
+            
+            if (canSeePlayer)
+            {
+//                Debug.Log($"🎯 {debugMsg}");
+            }
+            else if (playerInRange && playerInAngle && !noObstruction)
+            {
+    //            Debug.Log($"🚫 {debugMsg} - OBSTRUIDO");
+            }
+            else if (playerInRange && !playerInAngle)
+            {
+      //          Debug.Log($"📐 {debugMsg} - FUERA DE ÁNGULO");
+            }
         }
     }
 
-    // ✅ NUEVO: Método para forzar el estado de detección
+    // Método para debug rápido desde el inspector
+    [ContextMenu("Debug FieldOfView")]
+    public void DebugFieldOfView()
+    {
+        Debug.Log("=== FIELD OF VIEW DEBUG ===");
+        Debug.Log($"PlayerRef: {playerRef}");
+        Debug.Log($"Radius: {radius}");
+        Debug.Log($"Angle: {angle}");
+        Debug.Log($"Target Mask: {targetMask.value}");
+        Debug.Log($"Obstruction Mask: {obstructionMask.value}");
+        Debug.Log($"Can See Player: {canSeePlayer}");
+        
+        if (playerRef != null)
+        {
+            float distance = Vector3.Distance(transform.position, playerRef.transform.position);
+            Vector3 direction = (playerRef.transform.position - transform.position).normalized;
+            float angleToPlayer = Vector3.Angle(transform.forward, direction);
+            
+            Debug.Log($"Distancia al player: {distance:F1}");
+            Debug.Log($"Ángulo al player: {angleToPlayer:F1}");
+            Debug.Log($"Dentro de rango: {distance <= radius}");
+            Debug.Log($"Dentro de ángulo: {angleToPlayer < angle / 2}");
+        }
+    }
+
     public void SetDetectionEnabled(bool enabled)
     {
         if (!enabled)
         {
             canSeePlayer = false;
         }
-        // Si se habilita, la detección volverá a funcionar normalmente en el próximo frame
     }
 
-    // ✅ NUEVO: Método para reiniciar la detección al revivir
     public void ResetDetection()
     {
         canSeePlayer = false;
@@ -100,23 +156,29 @@ public class FieldOfView : MonoBehaviour
         StartCoroutine(FOVRoutine());
     }
 
-    // Resto del código se mantiene igual...
     private void OnDrawGizmos()
     {
+        // Área completa de detección
         Gizmos.color = Color.white;
         Gizmos.DrawWireSphere(transform.position, radius);
 
-        Gizmos.color = Color.yellow;
+        // Cono de visión
+        Gizmos.color = canSeePlayer ? Color.red : Color.yellow;
         Vector3 viewAngleA = DirFromAngle(-angle / 2);
         Vector3 viewAngleB = DirFromAngle(angle / 2);
 
         Gizmos.DrawLine(transform.position, transform.position + viewAngleA * radius);
         Gizmos.DrawLine(transform.position, transform.position + viewAngleB * radius);
 
-        if (canSeePlayer && playerRef != null)
+        // Línea al player si está en rango
+        if (playerRef != null)
         {
-            Gizmos.color = Color.green;
-            Gizmos.DrawLine(transform.position, playerRef.transform.position);
+            float distance = Vector3.Distance(transform.position, playerRef.transform.position);
+            if (distance <= radius)
+            {
+                Gizmos.color = canSeePlayer ? Color.green : Color.blue;
+                Gizmos.DrawLine(transform.position, playerRef.transform.position);
+            }
         }
     }
 
