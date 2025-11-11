@@ -1,2 +1,26 @@
 fileFormatVersion: 2
 guid: 92665c66a33ba0b4abd7880cb9a93fbe
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - cam: {instanceID: 0}
+  - groundCheck: {instanceID: 0}
+  - healthBarSlider: {instanceID: 0}
+  - healthText: {instanceID: 0}
+  - staminaBarSlider: {instanceID: 0}
+  - ammoText: {instanceID: 0}
+  - movementAction: {fileID: -1680190386980627800, guid: 289c1b55c9541489481df5cc06664110, type: 3}
+  - sprintAction: {instanceID: 0}
+  - crouchAction: {instanceID: 0}
+  - reloadAction: {instanceID: 0}
+  - jumpAction: {instanceID: 0}
+  - bulletPrefab: {instanceID: 0}
+  - barrelTransform: {instanceID: 0}
+  - bulletParent: {instanceID: 0}
+  - damageTrigger: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

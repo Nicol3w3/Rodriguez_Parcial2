@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using TMPro;
 
 public class TPMovement_Controller : MonoBehaviour
 {
@@ -8,6 +9,27 @@ public class TPMovement_Controller : MonoBehaviour
     public float walkSpeed = 3f;
     public float runSpeed = 6f;
     public float sprintSpeed = 8f;
+    
+    [Header("Crouch Settings")]
+    public float crouchHeight = 0.9f;
+    public float crouchSpeedMultiplier = 0.75f;
+    public float crouchTransitionSpeed = 5f;
+    private float originalHeight;
+    private Vector3 originalCenter;
+    private bool isCrouching = false;
+    
+    [Header("Visual Crouch")]
+    public Transform playerVisual;
+    private Vector3 originalVisualScale;
+    private Vector3 originalVisualPosition;
+    private float crouchVisualScale = 0.5f;
+    
+    [Header("Ammo Settings")]
+    public int maxAmmo = 15;
+    public int maxMagazines = 3;
+    private int currentAmmo;
+    private int currentMagazines;
+    private bool isReloading = false;
     
     [Header("Acceleration & Inertia")]
     public float acceleration = 15f;
@@ -52,10 +74,13 @@ public class TPMovement_Controller : MonoBehaviour
     public Slider healthBarSlider;
     public Text healthText;
     public Slider staminaBarSlider;
+    public TextMeshProUGUI ammoText;
 
     [Header("Input System")]
     public InputActionReference movementAction;
     public InputActionReference sprintAction;
+    public InputActionReference crouchAction;
+    public InputActionReference reloadAction;
     private InputAction shootAction;
     public InputActionReference jumpAction;
 
@@ -63,7 +88,6 @@ public class TPMovement_Controller : MonoBehaviour
     [SerializeField] private GameObject bulletPrefab;
     [SerializeField] private Transform barrelTransform;
     [SerializeField] private Transform bulletParent;
-    // [SerializeField] private float bulletRange = 25f;
     [SerializeField] private float fireRate = 0.5f;
 
     // Componentes
@@ -97,9 +121,28 @@ public class TPMovement_Controller : MonoBehaviour
     // Damage Detection
     public Collider damageTrigger;
 
-    private void Awake()
+     private void Awake()
     {
         controller = GetComponent<CharacterController>();
+        originalHeight = controller.height;
+        originalCenter = controller.center;
+        
+        if (playerVisual == null)
+        {
+            playerVisual = transform.Find("TPPlayer_Body");
+            if (playerVisual == null)
+            {
+                Debug.LogWarning("No se encontró el modelo visual TPPlayer_Body");
+            }
+        }
+        
+        if (playerVisual != null)
+        {
+            originalVisualScale = playerVisual.localScale;
+            originalVisualPosition = playerVisual.localPosition;
+            Debug.Log($"🔍 Escala visual original: {originalVisualScale}");
+            Debug.Log($"🔍 Posición visual original: {originalVisualPosition}");
+        }
         
         var playerInput = GetComponent<PlayerInput>();
         shootAction = playerInput.actions["Attack"];
@@ -113,6 +156,10 @@ public class TPMovement_Controller : MonoBehaviour
         currentStamina = maxStamina;
         jumpTimeoutDelta = jumpTimeout;
         fallTimeoutDelta = fallTimeout;
+
+        // Inicializar munición
+        currentAmmo = maxAmmo;
+        currentMagazines = maxMagazines - 1;
 
         if (damageTrigger == null)
         {
@@ -129,7 +176,9 @@ public class TPMovement_Controller : MonoBehaviour
 
         FindEnemyFOV();
         UpdateHealthUI();
+        GroundedCheck();
         UpdateStaminaUI();
+        UpdateAmmoUI();
     }
 
     private void OnEnable()
@@ -147,6 +196,12 @@ public class TPMovement_Controller : MonoBehaviour
         sprintAction.action.Enable();
         sprintAction.action.performed += OnSprintPerformed;
         sprintAction.action.canceled += OnSprintCanceled;
+
+        crouchAction.action.Enable();
+        crouchAction.action.performed += OnCrouchPerformed;
+        
+        reloadAction.action.Enable();
+        reloadAction.action.performed += OnReloadPerformed;
     }
 
     private void OnDisable()
@@ -164,6 +219,12 @@ public class TPMovement_Controller : MonoBehaviour
         sprintAction.action.performed -= OnSprintPerformed;
         sprintAction.action.canceled -= OnSprintCanceled;
         sprintAction.action.Disable();
+
+        crouchAction.action.performed -= OnCrouchPerformed;
+        crouchAction.action.Disable();
+        
+        reloadAction.action.performed -= OnReloadPerformed;
+        reloadAction.action.Disable();
     }
 
     private void Update()
@@ -172,116 +233,267 @@ public class TPMovement_Controller : MonoBehaviour
         GroundedCheck();
         JumpAndGravity();
         Move();
+        HandleCrouch();
     }
 
-    private void GroundedCheck()
+     private void GroundedCheck()
     {
         bool wasGrounded = isGrounded;
-        isGrounded = Physics.CheckSphere(groundCheck.position, groundDistance, groundMask);
+        
+        // ✅ USAR EL CENTRO Y RADIO DEL CHARACTERCONTROLLER PARA DETECCIÓN MÁS PRECISA
+        float checkDistance = controller.height / 2 + 0.1f;
+        Vector3 checkPosition = transform.position + controller.center;
+        
+        isGrounded = Physics.CheckSphere(checkPosition, checkDistance, groundMask);
+
+        // Debug visual
+        Debug.DrawRay(checkPosition, Vector3.down * checkDistance, isGrounded ? Color.green : Color.red);
 
         if (!wasGrounded && isGrounded)
         {
             isJumping = false;
+            // Debug.Log("✅ Tocando suelo");
+        }
+        else if (wasGrounded && !isGrounded)
+        {
+            // Debug.Log("❌ En el aire");
         }
     }
 
     private void Move()
-{
-    float targetSpeed = GetTargetSpeed();
-    
-    if (movementInput.magnitude < 0.1f)
     {
-        targetSpeed = 0f;
-    }
-
-    Vector3 inputDirection = new Vector3(movementInput.x, 0f, movementInput.y).normalized;
-    
-    // ✅ ROTACIÓN: Siempre hacia donde mira la cámara
-    RotateTowardsCamera();
-    
-    // ✅ MOVIMIENTO: Relativo a la rotación actual del personaje
-    if (inputDirection.magnitude >= 0.1f)
-    {
-        // Movimiento relativo a la dirección que mira el personaje
-        Vector3 targetDirection = (transform.forward * inputDirection.z + transform.right * inputDirection.x).normalized;
-        targetVelocity = targetDirection * targetSpeed;
-    }
-    else
-    {
-        targetVelocity = Vector3.zero;
-    }
-
-    // ACELERACIÓN Y FRICCIÓN (se mantiene igual)
-    float currentAcceleration = isGrounded ? acceleration : airControl;
-    float currentDeceleration = isGrounded ? deceleration : airFriction;
-    
-    if (targetVelocity.magnitude > 0.1f)
-    {
-        currentVelocity = Vector3.Lerp(currentVelocity, targetVelocity, currentAcceleration * Time.deltaTime);
-    }
-    else
-    {
-        currentVelocity = Vector3.Lerp(currentVelocity, Vector3.zero, currentDeceleration * Time.deltaTime);
-    }
-
-    if (isGrounded && currentVelocity.magnitude > 0.1f)
-    {
-        currentVelocity = Vector3.Lerp(currentVelocity, Vector3.zero, groundFriction * Time.deltaTime);
-    }
-
-    Vector3 motion = currentVelocity + verticalVelocity;
-    controller.Move(motion * Time.deltaTime);
-}
-
-// ✅ NUEVO: Rotación independiente del movimiento
-private void RotateTowardsCamera()
-{
-    // Obtener dirección forward de la cámara (horizontal solamente)
-    Vector3 cameraForward = cam.forward;
-    cameraForward.y = 0f;
-    
-    if (cameraForward.sqrMagnitude > 0.01f)
-    {
-        cameraForward.Normalize();
+        float targetSpeed = GetTargetSpeed();
         
-        // Rotación suave hacia la dirección de la cámara
-        Quaternion targetRotation = Quaternion.LookRotation(cameraForward);
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, smoothTurn * Time.deltaTime * 10f);
+        if (movementInput.magnitude < 0.1f)
+        {
+            targetSpeed = 0f;
+        }
+
+        Vector3 inputDirection = new Vector3(movementInput.x, 0f, movementInput.y).normalized;
+        
+        RotateTowardsCamera();
+        
+        if (inputDirection.magnitude >= 0.1f)
+        {
+            Vector3 targetDirection = (transform.forward * inputDirection.z + transform.right * inputDirection.x).normalized;
+            targetVelocity = targetDirection * targetSpeed;
+        }
+        else
+        {
+            targetVelocity = Vector3.zero;
+        }
+
+        // Aceleración y fricción
+        float currentAcceleration = isGrounded ? acceleration : airControl;
+        float currentDeceleration = isGrounded ? deceleration : airFriction;
+        
+        if (targetVelocity.magnitude > 0.1f)
+        {
+            currentVelocity = Vector3.Lerp(currentVelocity, targetVelocity, currentAcceleration * Time.deltaTime);
+        }
+        else
+        {
+            currentVelocity = Vector3.Lerp(currentVelocity, Vector3.zero, currentDeceleration * Time.deltaTime);
+        }
+
+        // Fricción adicional en el suelo
+        if (isGrounded && currentVelocity.magnitude > 0.1f)
+        {
+            currentVelocity = Vector3.Lerp(currentVelocity, Vector3.zero, groundFriction * Time.deltaTime);
+        }
+
+        // Aplicar movimiento
+        Vector3 motion = currentVelocity + verticalVelocity;
+        controller.Move(motion * Time.deltaTime);
+        
+        // Debug de movimiento
+        Debug.DrawRay(transform.position, currentVelocity, Color.blue);
+        Debug.DrawRay(transform.position, verticalVelocity, Color.yellow);
+    }   
+
+    // ✅ ROTACIÓN: Compatible con Cinemachine
+    private void RotateTowardsCamera()
+    {
+        Vector3 cameraForward = cam.forward;
+        cameraForward.y = 0f;
+        
+        if (cameraForward.sqrMagnitude > 0.01f)
+        {
+            cameraForward.Normalize();
+            
+            Quaternion targetRotation = Quaternion.LookRotation(cameraForward);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, smoothTurn * Time.deltaTime * 10f);
+        }
     }
-}
 
     private float GetTargetSpeed()
     {
+        float baseSpeed;
+        
         if (isSprinting && currentStamina > 0 && movementInput.magnitude > 0.1f)
         {
-            return sprintSpeed;
+            baseSpeed = sprintSpeed;
         }
         else if (movementInput.magnitude > 0.1f)
         {
-            return isGrounded ? runSpeed : runSpeed * 0.8f;
+            baseSpeed = isGrounded ? runSpeed : runSpeed * 0.8f;
+        }
+        else
+        {
+            baseSpeed = walkSpeed;
         }
         
-        return walkSpeed;
+        if (isCrouching)
+        {
+            baseSpeed *= crouchSpeedMultiplier;
+        }
+        
+        return baseSpeed;
     }
 
-    private void JumpAndGravity()
+   // ✅ CORREGIDO: Manejar agachado con ajuste visual
+     private void HandleCrouch()
+    {
+        float targetHeight = isCrouching ? crouchHeight : originalHeight;
+        Vector3 targetCenter = isCrouching ? new Vector3(0, -crouchHeight/2, 0) : originalCenter;
+        
+        // Transición suave del CharacterController
+        if (Mathf.Abs(controller.height - targetHeight) > 0.01f)
+        {
+            controller.height = Mathf.Lerp(controller.height, targetHeight, crouchTransitionSpeed * Time.deltaTime);
+            controller.center = Vector3.Lerp(controller.center, targetCenter, crouchTransitionSpeed * Time.deltaTime);
+        }
+
+        // ✅ CORREGIDO: Transición visual MÁS SIMPLE Y DIRECTA
+        if (playerVisual != null)
+        {
+            Vector3 targetVisualScale = isCrouching ? 
+                new Vector3(originalVisualScale.x, originalVisualScale.y * crouchVisualScale, originalVisualScale.z) : 
+                originalVisualScale;
+
+            Vector3 targetVisualPosition = isCrouching ? 
+                new Vector3(originalVisualPosition.x, originalVisualPosition.y - (originalVisualScale.y - targetVisualScale.y) * 0.5f, originalVisualPosition.z) : 
+                originalVisualPosition;
+
+            // Aplicar cambios directamente con Lerp para suavidad
+            playerVisual.localScale = Vector3.Lerp(playerVisual.localScale, targetVisualScale, crouchTransitionSpeed * Time.deltaTime);
+            playerVisual.localPosition = Vector3.Lerp(playerVisual.localPosition, targetVisualPosition, crouchTransitionSpeed * Time.deltaTime);
+
+            // Debug visual
+            if (isCrouching && Time.frameCount % 30 == 0)
+            {
+                Debug.Log($"🧎 Escala: {playerVisual.localScale} | Posición: {playerVisual.localPosition}");
+            }
+        }
+    }
+
+    [ContextMenu("Forzar Agachado")]
+    private void ForceCrouch()
+    {
+        isCrouching = true;
+        if (playerVisual != null)
+        {
+            Vector3 targetScale = new Vector3(originalVisualScale.x, originalVisualScale.y * crouchVisualScale, originalVisualScale.z);
+            playerVisual.localScale = targetScale;
+            
+            Vector3 targetPosition = new Vector3(originalVisualPosition.x, originalVisualPosition.y - (originalVisualScale.y - targetScale.y) * 0.5f, originalVisualPosition.z);
+            playerVisual.localPosition = targetPosition;
+            
+            Debug.Log($"🔄 Agachado forzado - Escala: {targetScale}");
+        }
+    }
+
+    [ContextMenu("Forzar De Pie")]
+    private void ForceStand()
+    {
+        isCrouching = false;
+        if (playerVisual != null)
+        {
+            playerVisual.localScale = originalVisualScale;
+            playerVisual.localPosition = originalVisualPosition;
+            Debug.Log($"🔄 De pie forzado - Escala: {originalVisualScale}");
+        }
+    }
+
+    private void OnCrouchPerformed(InputAction.CallbackContext context)
+    {
+        isCrouching = !isCrouching;
+        Debug.Log($"🧎 {(isCrouching ? "Agachado" : "De pie")}");
+    }
+
+    // ✅ NUEVO: Recargar con la tecla R
+    private void OnReloadPerformed(InputAction.CallbackContext context)
+    {
+        if (!isReloading && currentAmmo < maxAmmo && currentMagazines > 0)
+        {
+            StartReload();
+        }
+        else if (currentAmmo == maxAmmo)
+        {
+            Debug.Log("✅ Recámara llena");
+        }
+        else if (currentMagazines <= 0)
+        {
+            Debug.Log("❌ Sin cargadores adicionales");
+        }
+    }
+
+    private void StartReload()
+    {
+        isReloading = true;
+        canShoot = false;
+        Debug.Log("🔄 Recargando...");
+        
+        // Simular tiempo de recarga (1 segundo)
+        Invoke(nameof(FinishReload), 1f);
+    }
+
+    private void FinishReload()
+    {
+        int ammoNeeded = maxAmmo - currentAmmo;
+        int ammoToAdd = Mathf.Min(ammoNeeded, maxAmmo, currentMagazines * maxAmmo);
+        
+        currentAmmo += ammoToAdd;
+        currentMagazines--;
+        
+        isReloading = false;
+        canShoot = true;
+        
+        Debug.Log($"✅ Recarga completada: {currentAmmo}/{maxAmmo} | Cargadores: {currentMagazines}");
+        UpdateAmmoUI();
+    }
+
+    // ✅ NUEVO: Actualizar UI de munición
+    private void UpdateAmmoUI()
+    {
+        if (ammoText != null)
+        {
+            ammoText.text = $"{currentAmmo}/{maxAmmo} | ⭕ {currentMagazines}";
+        }
+    }
+
+     private void JumpAndGravity()
     {
         if (isGrounded)
         {
             fallTimeoutDelta = fallTimeout;
 
+            // Resetear velocidad vertical cuando toca el suelo
             if (verticalVelocity.y < 0f)
             {
-                verticalVelocity.y = -2f;
+                verticalVelocity.y = -2f; // Pequeña fuerza hacia abajo para mantener contacto
             }
 
-            if (jumpPressed && jumpTimeoutDelta <= 0f)
+            // ✅ SALTO: Permitir saltar solo si está en suelo y no está agachado
+            if (jumpPressed && jumpTimeoutDelta <= 0f && !isCrouching)
             {
                 verticalVelocity.y = Mathf.Sqrt(jumpHeight * -2f * Physics.gravity.y);
                 isJumping = true;
                 jumpTimeoutDelta = jumpTimeout;
+                Debug.Log("🦘 Saltando!");
             }
 
+            // Manejar timeout del salto
             if (jumpTimeoutDelta >= 0f)
             {
                 jumpTimeoutDelta -= Time.deltaTime;
@@ -289,19 +501,25 @@ private void RotateTowardsCamera()
         }
         else
         {
+            // Resetear timeout del salto cuando está en el aire
             jumpTimeoutDelta = jumpTimeout;
 
+            // Manejar timeout de caída
             if (fallTimeoutDelta >= 0f)
             {
                 fallTimeoutDelta -= Time.deltaTime;
             }
 
+            // Resetear salto presionado
             jumpPressed = false;
         }
 
+        // Aplicar gravedad siempre que no esté en el suelo o esté saltando
         if (!isGrounded || isJumping)
         {
             verticalVelocity.y += Physics.gravity.y * gravityMultiplier * Time.deltaTime;
+            
+            // Limitar velocidad de caída máxima
             verticalVelocity.y = Mathf.Max(verticalVelocity.y, -50f);
         }
     }
@@ -401,10 +619,29 @@ private void RotateTowardsCamera()
     // SHOOTING METHODS
     private void TryToShoot()
     {
-        if (Time.time >= nextFireTime && canShoot)
+        if (Time.time >= nextFireTime && canShoot && !isReloading)
         {
-            ShootGun();
-            nextFireTime = Time.time + fireRate;
+            if (currentAmmo > 0)
+            {
+                ShootGun();
+                currentAmmo--;
+                UpdateAmmoUI();
+                nextFireTime = Time.time + fireRate;
+                
+                if (currentAmmo <= 0)
+                {
+                    Debug.Log("⚠️ Recámara vacía - Presiona R para recargar");
+                }
+            }
+            else
+            {
+                Debug.Log("❌ Sin munición - Presiona R para recargar");
+                // Auto-recarga si hay cargadores disponibles
+                if (currentMagazines > 0 && !isReloading)
+                {
+                    StartReload();
+                }
+            }
         }
     }
 
@@ -434,7 +671,7 @@ private void RotateTowardsCamera()
     {
         if (hitObject.CompareTag("Enemy"))
         {
-//            Debug.Log($"🎯 Impacto en enemigo!");
+            // Debug.Log($"🎯 Impacto en enemigo! Munición restante: {currentAmmo}");
         }
     }
 
@@ -536,17 +773,43 @@ private void RotateTowardsCamera()
         fireRate = newFireRate;
     }
 
+    // ✅ NUEVO: Métodos para gestionar munición
+    public void AddMagazine()
+    {
+        currentMagazines++;
+        UpdateAmmoUI();
+        Debug.Log($"➕ Cargador añadido. Total: {currentMagazines}");
+    }
+
+    public bool HasAmmo()
+    {
+        return currentAmmo > 0 || currentMagazines > 0;
+    }
+
+    public int GetCurrentAmmo()
+    {
+        return currentAmmo;
+    }
+
+    public int GetCurrentMagazines()
+    {
+        return currentMagazines;
+    }
+
     // DEBUG
     private void OnGUI()
     {
         #if UNITY_EDITOR
-        GUILayout.BeginArea(new Rect(10, 10, 300, 200));
+        GUILayout.BeginArea(new Rect(10, 10, 300, 250));
         GUILayout.Label($"Vida: {currentHealth:F0}/{maxHealth:F0}");
         GUILayout.Label($"Stamina: {currentStamina:F1}/{maxStamina}");
         GUILayout.Label($"Sprinting: {isSprinting}");
         GUILayout.Label($"Velocidad: {currentVelocity.magnitude:F1}");
         GUILayout.Label($"Enemigo te ve: {isBeingWatchedByEnemy}");
         GUILayout.Label($"En suelo: {isGrounded}");
+        GUILayout.Label($"Agachado: {isCrouching}");
+        GUILayout.Label($"Munición: {currentAmmo}/{maxAmmo} | Cargadores: {currentMagazines}");
+        GUILayout.Label($"Recargando: {isReloading}");
         GUILayout.EndArea();
         #endif
     }

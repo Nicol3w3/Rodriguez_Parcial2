@@ -1,13 +1,11 @@
 using UnityEngine;
 using TMPro;
-using UnityEngine.UI;
 
 public class EnemyStateDisplay : MonoBehaviour
 {
     [Header("Display Settings")]
-    public GameObject displayPrefab; // Prefab con Canvas y TextMeshPro
-    public Vector3 offset = new Vector3(0, 2f, 0); // Offset sobre la cabeza del enemigo
-    public float scaleFactor = 0.01f; // Escala para que el Canvas World Space se vea bien
+    public Vector3 worldOffset = new Vector3(0, 2.5f, 0);
+    public float textScale = 1f;
     
     [Header("State Colors")]
     public Color idleColor = Color.gray;
@@ -16,127 +14,78 @@ public class EnemyStateDisplay : MonoBehaviour
     public Color damagedColor = Color.yellow;
     public Color deadColor = Color.black;
 
-    private GameObject displayInstance;
-    private TextMeshProUGUI stateText;
-    private CanvasGroup canvasGroup;
+    private TextMeshPro stateText;
     private AIController aiController;
-    private Transform playerTransform;
+    private Transform playerCamera;
 
     void Start()
     {
         aiController = GetComponent<AIController>();
         
-        // Buscar al jugador
-        GameObject player = GameObject.FindGameObjectWithTag("Player");
-        if (player != null)
-        {
-            playerTransform = player.transform;
-        }
-
-        CreateDisplay();
+        // Buscar la cámara del jugador (no el GameObject del jugador)
+        playerCamera = Camera.main.transform;
         
-        if (aiController != null)
-        {
-            // Suscribirse a eventos de cambio de estado si es necesario
-            aiController.OnHealthChanged += OnHealthChanged;
-        }
+        CreateTextDisplay();
+//        Debug.Log($"✅ EnemyStateDisplay creado para: {gameObject.name}");
     }
 
-    void CreateDisplay()
+    void CreateTextDisplay()
     {
-        if (displayPrefab != null)
-        {
-            displayInstance = Instantiate(displayPrefab, transform);
-            displayInstance.transform.localPosition = offset;
-            displayInstance.transform.localScale = Vector3.one * scaleFactor;
-            
-            stateText = displayInstance.GetComponentInChildren<TextMeshProUGUI>();
-            canvasGroup = displayInstance.GetComponent<CanvasGroup>();
-            
-            if (stateText == null)
-            {
-                Debug.LogError("No se encontró TextMeshProUGUI en el prefab de display");
-            }
-        }
-        else
-        {
-            // Crear display automáticamente si no hay prefab
-            CreateDefaultDisplay();
-        }
-        
-        UpdateDisplay();
-    }
-
-    void CreateDefaultDisplay()
-    {
-        // Crear Canvas
-        GameObject canvasObj = new GameObject("StateDisplay");
-        displayInstance = canvasObj;
-        canvasObj.transform.SetParent(transform);
-        canvasObj.transform.localPosition = offset;
-        canvasObj.transform.localScale = Vector3.one * scaleFactor;
-        
-        Canvas canvas = canvasObj.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.WorldSpace;
-        canvasObj.AddComponent<CanvasScaler>();
-        canvasObj.AddComponent<GraphicRaycaster>();
-        
-        // Crear Texto
+        // Crear GameObject para el texto
         GameObject textObj = new GameObject("StateText");
-        textObj.transform.SetParent(canvasObj.transform);
-        textObj.transform.localPosition = Vector3.zero;
-        textObj.transform.localScale = Vector3.one;
         
-        RectTransform rectTransform = textObj.AddComponent<RectTransform>();
-        rectTransform.sizeDelta = new Vector2(200, 50);
+        // Hacerlo hijo del enemigo para que siga su movimiento
+        textObj.transform.SetParent(transform);
         
-        stateText = textObj.AddComponent<TextMeshProUGUI>();
+        // Configurar TextMeshPro
+        stateText = textObj.AddComponent<TextMeshPro>();
         stateText.text = "Initializing...";
-        stateText.fontSize = 20;
+        stateText.fontSize = 3;
         stateText.alignment = TextAlignmentOptions.Center;
         stateText.color = Color.white;
         
-        // Agregar fondo opcional
-        stateText.fontMaterial.EnableKeyword("UNDERLAY_ON");
-        stateText.fontSharedMaterial.SetColor("_UnderlayColor", Color.black);
+        // Mejorar legibilidad
+        stateText.outlineWidth = 0.2f;
+        stateText.outlineColor = Color.black;
+        stateText.fontStyle = FontStyles.Bold;
         
-        canvasGroup = canvasObj.AddComponent<CanvasGroup>();
+        // Aplicar escala
+        textObj.transform.localScale = Vector3.one * textScale;
     }
 
     void Update()
     {
-        if (displayInstance != null && stateText != null)
+        if (stateText != null && aiController != null && playerCamera != null)
         {
-            UpdateDisplay();
-            FacePlayer();
+            UpdateTextPosition();
+            UpdateTextContent();
+            RotateTextToCamera();
         }
     }
 
-    void UpdateDisplay()
+    void UpdateTextPosition()
     {
-        if (aiController != null)
-        {
-            // Obtener el estado actual usando reflexión para acceder al campo protegido
-            string currentState = GetCurrentState();
-            stateText.text = $"{aiController.GetEnemyName()}\n{currentState}";
-            
-            // Cambiar color según el estado
-            stateText.color = GetStateColor(currentState);
-        }
+        // Posición fija sobre la cabeza del enemigo en coordenadas locales
+        stateText.transform.localPosition = worldOffset;
     }
 
-    string GetCurrentState()
+    void UpdateTextContent()
     {
-        // Usar reflexión para acceder al campo protegido currentState
-        var field = typeof(AIController).GetField("currentState", 
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        // Actualizar texto y color
+        string state = aiController.GetCurrentState();
+        stateText.text = $"{aiController.GetEnemyName()}\n{state}";
+        stateText.color = GetStateColor(state);
+    }
+
+    void RotateTextToCamera()
+    {
+        // Rotar el texto para que siempre mire a la cámara
+        stateText.transform.rotation = playerCamera.rotation;
         
-        if (field != null)
-        {
-            return field.GetValue(aiController).ToString();
-        }
-        
-        return "Unknown";
+        // Opcional: Si quieres que solo rote en el eje Y
+        // Vector3 lookPos = playerCamera.position;
+        // lookPos.y = stateText.transform.position.y;
+        // stateText.transform.LookAt(2 * stateText.transform.position - lookPos);
     }
 
     Color GetStateColor(string state)
@@ -152,34 +101,36 @@ public class EnemyStateDisplay : MonoBehaviour
         }
     }
 
-    void FacePlayer()
+    // Métodos para ajustar fácilmente desde el inspector
+    [ContextMenu("Ajustar Altura +0.5")]
+    void IncreaseHeight()
     {
-        if (playerTransform != null && displayInstance != null)
-        {
-            // Hacer que el display mire siempre hacia la cámara (jugador)
-            displayInstance.transform.LookAt(2 * displayInstance.transform.position - playerTransform.position);
-        }
-        else if (Camera.main != null)
-        {
-            // Fallback: usar la cámara principal
-            displayInstance.transform.LookAt(2 * displayInstance.transform.position - Camera.main.transform.position);
-        }
+        worldOffset.y += 0.5f;
+        Debug.Log($"🔼 Altura ajustada a: {worldOffset.y}");
     }
 
-    void OnHealthChanged(float healthPercent)
+    [ContextMenu("Ajustar Altura -0.5")]
+    void DecreaseHeight()
     {
-        // Opcional: hacer fade out cuando muera
-        if (healthPercent <= 0 && canvasGroup != null)
+        worldOffset.y -= 0.5f;
+        Debug.Log($"🔽 Altura ajustada a: {worldOffset.y}");
+    }
+
+    [ContextMenu("Debug: Mostrar Posición Texto")]
+    void DebugTextPosition()
+    {
+        if (stateText != null)
         {
-            canvasGroup.alpha = 0.5f;
+            Debug.Log($"📝 Posición texto - Mundial: {stateText.transform.position}, Local: {stateText.transform.localPosition}");
+            Debug.Log($"🎯 Posición enemigo: {transform.position}");
         }
     }
 
     void OnDestroy()
     {
-        if (displayInstance != null)
+        if (stateText != null && stateText.gameObject != null)
         {
-            Destroy(displayInstance);
+            Destroy(stateText.gameObject);
         }
     }
 }

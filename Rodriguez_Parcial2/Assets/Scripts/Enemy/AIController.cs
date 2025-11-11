@@ -586,7 +586,7 @@ public class AIController : MonoBehaviour
     }
     public string GetCurrentState()
     {
-    return currentState.ToString();
+        return currentState.ToString();
     }
     
 }
