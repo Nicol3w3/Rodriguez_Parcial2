@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections;
 
 public class AIController : MonoBehaviour
 {
@@ -17,22 +18,29 @@ public class AIController : MonoBehaviour
 
     [Header("Debug Info - Read Only")]
     [SerializeField] private string currentStateDisplay;
+    [SerializeField] private string previousStateDisplay;
     [SerializeField] private float currentHealthDisplay;
     
     // Estados protegidos para herencia
-    protected enum AIState { Patrolling, Chasing, Dead, Idle }
+    protected enum AIState { Patrolling, Chasing, Dead, Idle, Damaged }
     protected AIState currentState = AIState.Idle;
-    
+    protected AIState previousState = AIState.Idle;
+    protected AIState stateBeforeDamage; // Para recordar el estado antes del daño
     
     protected float currentHealth;
     public bool isChasing { get; protected set; } = false;
     protected Vector3 lastKnownPlayerPosition;
     protected float chaseTimer = 0f;
     protected ObstacleAvoidance obstacleAvoidance;
+    protected Coroutine damageRecoveryCoroutine;
 
     // Eventos
     public System.Action<float> OnHealthChanged;
     public System.Action OnDeath;
+
+    // Debug de estados
+    [Header("State Debug")]
+    [SerializeField] private bool enableStateDebug = true;
 
     protected virtual void Start()
     {
@@ -47,9 +55,7 @@ public class AIController : MonoBehaviour
             }
         }
         
-        Debug.Log($"✅ {enemyConfig.enemyName} inicializado - " +
-                 $"Persecución: {enemyConfig.usePersistentChase}, " +
-                 $"Evasión: {enemyConfig.useObstacleAvoidance}");
+        UpdateStateDisplays();
         
         SetupDamageCollider();
         
@@ -61,6 +67,30 @@ public class AIController : MonoBehaviour
                 Debug.LogWarning($"ObstacleAvoidance no encontrado en {enemyConfig.enemyName}");
             }
         }
+    }
+
+    // MÉTODO CLAVE: Cambiar estado con debug
+    protected virtual void ChangeState(AIState newState)
+    {
+        if (currentState == newState) return;
+
+        previousState = currentState;
+        currentState = newState;
+        
+        UpdateStateDisplays();
+        
+        if (enableStateDebug)
+        {
+            Debug.Log($"🔄 {enemyConfig.enemyName} cambió estado: {previousState} → {currentState}");
+        }
+    }
+
+    // Actualizar displays para inspector
+    private void UpdateStateDisplays()
+    {
+        currentStateDisplay = currentState.ToString();
+        previousStateDisplay = previousState.ToString();
+        currentHealthDisplay = currentHealth;
     }
 
     private void SetupDamageCollider()
@@ -123,17 +153,17 @@ public class AIController : MonoBehaviour
             damageCollider.isTrigger = true;
         }
 
-//        Debug.Log($"✅ {enemyConfig.enemyName} inicializado - Salud: {currentHealth}");
+        UpdateStateDisplays();
     }
 
     protected virtual void Update()
     {
-        UpdateInspectorDisplay();
+        UpdateStateDisplays(); // Mantener actualizado en tiempo real
     }
 
     protected virtual void FixedUpdate()
     {
-        if (currentState == AIState.Dead) return;
+        if (currentState == AIState.Dead || currentState == AIState.Damaged) return;
         
         CheckGrounded();
         HandleDetection();
@@ -146,73 +176,60 @@ public class AIController : MonoBehaviour
         return AIState.Idle;
     }
 
-    private void UpdateInspectorDisplay()
-    {
-        currentStateDisplay = currentState.ToString();
-        currentHealthDisplay = currentHealth;
-        //isGroundedDisplay = isGrounded;
-        //lastKnownPositionDisplay = lastKnownPlayerPosition;
-    }
-
      private void CheckGrounded()
-{
-    // Raycast simple hacia abajo
-    if (Physics.Raycast(transform.position + Vector3.up * 0.5f, Vector3.down, out RaycastHit hit, groundCheckDistance, groundMask))
     {
-        isGrounded = true;
-        
-        // Ajustar para mantener una altura adecuada sobre el suelo
-        float desiredHeightAboveGround = 1.0f; // Ajusta este valor según la altura de tu personaje
-        
-        if (transform.position.y < hit.point.y + desiredHeightAboveGround)
+        // Raycast simple hacia abajo
+        if (Physics.Raycast(transform.position + Vector3.up * 0.5f, Vector3.down, out RaycastHit hit, groundCheckDistance, groundMask))
         {
-            Vector3 pos = transform.position;
-            pos.y = hit.point.y + desiredHeightAboveGround;
-            transform.position = pos;
+            isGrounded = true;
             
-            // Resetear velocidad vertical
-            Vector3 velocity = rb.linearVelocity;
-            velocity.y = 0;
-            rb.linearVelocity = velocity;
+            // Ajustar para mantener una altura adecuada sobre el suelo
+            float desiredHeightAboveGround = 1.0f; // Ajusta este valor según la altura de tu personaje
+            
+            if (transform.position.y < hit.point.y + desiredHeightAboveGround)
+            {
+                Vector3 pos = transform.position;
+                pos.y = hit.point.y + desiredHeightAboveGround;
+                transform.position = pos;
+                
+                // Resetear velocidad vertical
+                Vector3 velocity = rb.linearVelocity;
+                velocity.y = 0;
+                rb.linearVelocity = velocity;
+            }
+        }
+        else
+        {
+            isGrounded = false;
         }
         
-//        Debug.Log($"✅ EN SUELO - Distancia: {hit.distance:F3}, Altura ajustada: {transform.position.y:F2}");
+        // Debug visual
+        Debug.DrawRay(transform.position + Vector3.up * 0.5f, Vector3.down * groundCheckDistance, 
+                     isGrounded ? Color.green : Color.red);
     }
-    else
-    {
-        isGrounded = false;
-    //    Debug.Log("❌ NO EN SUELO");
-    }
-    
-    // Debug visual
-    Debug.DrawRay(transform.position + Vector3.up * 0.5f, Vector3.down * groundCheckDistance, 
-                 isGrounded ? Color.green : Color.red);
-}
 
     protected virtual void HandleDetection()
-{
-    if (fov != null && fov.playerRef != null)
     {
-        if (fov.canSeePlayer)
+        if (fov != null && fov.playerRef != null)
         {
-            if (!isChasing && enemyConfig.canChase)
+            if (fov.canSeePlayer)
             {
-                StartChasing();
+                if (!isChasing && enemyConfig.canChase && currentState != AIState.Damaged)
+                {
+                    StartChasing();
+                }
+                lastKnownPlayerPosition = fov.playerRef.transform.position;
+                chaseTimer = 0f;
             }
-            lastKnownPlayerPosition = fov.playerRef.transform.position;
-            chaseTimer = 0f;
-        }
-        // ✅ PERSECUCIÓN PERSISTENTE: Seguir al jugador aunque no lo vea
-        else if (isChasing && enemyConfig.usePersistentChase)
-        {
-            // Actualizar posición continuamente mientras esté persiguiendo
-            lastKnownPlayerPosition = fov.playerRef.transform.position;
-            
-            // Debug para mostrar que está persiguiendo sin ver
-           // Debug.Log($"{enemyConfig.enemyName} persiguiendo sin visión directa");
+            // ✅ PERSECUCIÓN PERSISTENTE: Seguir al jugador aunque no lo vea
+            else if (isChasing && enemyConfig.usePersistentChase)
+            {
+                // Actualizar posición continuamente mientras esté persiguiendo
+                lastKnownPlayerPosition = fov.playerRef.transform.position;
+            }
         }
     }
-}
+
      protected virtual void HandleChasePersistence()
     {
         // ✅ SOLO para enemigos con persecución persistente
@@ -221,15 +238,6 @@ public class AIController : MonoBehaviour
         if (isChasing)
         {
             chaseTimer += Time.deltaTime;
-            
-            // ✅ Perseguir INDEFINIDAMENTE hasta encontrar al jugador
-            // No hay timeout, solo seguimos persiguiendo
-            
-            // Debug opcional para ver cuánto tiempo lleva persiguiendo
-            if (chaseTimer % 10f < 0.1f) // Cada 10 segundos
-            {
-//                Debug.Log($"{enemyConfig.enemyName} lleva {chaseTimer:F0}s persiguiendo al jugador");
-            }
         }
     }
 
@@ -238,16 +246,22 @@ public class AIController : MonoBehaviour
         // ✅ SOLO se detiene si no usa persecución persistente
         if (enemyConfig.usePersistentChase)
         {
-            Debug.Log($"{enemyConfig.enemyName} sigue en persecución persistente");
+            if (enableStateDebug)
+            {
+                Debug.Log($"{enemyConfig.enemyName} sigue en persecución persistente");
+            }
             return;
         }
         
         isChasing = false;
-        currentState = GetDefaultState();
+        ChangeState(GetDefaultState()); // Usar ChangeState en lugar de asignación directa
         chaseTimer = 0f;
-        Debug.Log($"{enemyConfig.enemyName} dejó de perseguir al jugador");
+        
+        if (enableStateDebug)
+        {
+            Debug.Log($"{enemyConfig.enemyName} dejó de perseguir al jugador");
+        }
     }
-
 
     protected virtual void HandleStateBehavior()
     {
@@ -262,60 +276,71 @@ public class AIController : MonoBehaviour
             case AIState.Idle:
                 IdleBehavior();
                 break;
+            case AIState.Damaged:
+                DamagedBehavior();
+                break;
         }
     }
 
-   protected virtual void ChaseBehavior()
-{
-    if (!enemyConfig.canMove || !isGrounded) return;
-
-    // ✅ SIEMPRE intentar obtener la posición actual del jugador si está disponible
-    if (fov != null && fov.playerRef != null)
+    protected virtual void ChaseBehavior()
     {
-        lastKnownPlayerPosition = fov.playerRef.transform.position;
-    }
+        if (!enemyConfig.canMove || !isGrounded) return;
 
-    Vector3 direction = (lastKnownPlayerPosition - transform.position).normalized;
-    direction.y = 0;
-    
-    RotateTowards(lastKnownPlayerPosition);
-    
-    float currentSpeed = enemyConfig.chaseSpeed;
-    
-    if (enemyConfig.useObstacleAvoidance && obstacleAvoidance != null)
-    {
-        if (obstacleAvoidance.IsPathBlocked(lastKnownPlayerPosition))
+        // ✅ SIEMPRE intentar obtener la posición actual del jugador si está disponible
+        if (fov != null && fov.playerRef != null)
         {
-            Vector3 alternativeDirection = obstacleAvoidance.FindAlternativeDirection(lastKnownPlayerPosition);
-            direction = alternativeDirection;
-            Debug.Log("🚧 Camino bloqueado, buscando ruta alternativa");
+            lastKnownPlayerPosition = fov.playerRef.transform.position;
         }
-    }
-    
-    Vector3 targetVelocity = direction * currentSpeed;
-    rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
-    
-    // ✅ Debug visual mejorado
-    Debug.DrawLine(transform.position, lastKnownPlayerPosition, 
-                  fov != null && fov.canSeePlayer ? Color.red : Color.yellow);
-    
-    // Mostrar estado de persecución
-    if (fov != null && !fov.canSeePlayer)
-    {
-//        Debug.Log($"🎯 {enemyConfig.enemyName} persiguiendo sin visión - Posición: {lastKnownPlayerPosition}");
-    }
-}
 
-// En AIController.cs
-protected virtual void PatrolBehavior()
-{
-    // Comportamiento base vacío - será overrideado en SoldierAIController
-    currentState = AIState.Idle; // Por defecto pasar a idle si no hay patrulla
-}
+        Vector3 direction = (lastKnownPlayerPosition - transform.position).normalized;
+        direction.y = 0;
+        
+        RotateTowards(lastKnownPlayerPosition);
+        
+        float currentSpeed = enemyConfig.chaseSpeed;
+        
+        if (enemyConfig.useObstacleAvoidance && obstacleAvoidance != null)
+        {
+            if (obstacleAvoidance.IsPathBlocked(lastKnownPlayerPosition))
+            {
+                Vector3 alternativeDirection = obstacleAvoidance.FindAlternativeDirection(lastKnownPlayerPosition);
+                direction = alternativeDirection;
+                
+                if (enableStateDebug)
+                {
+//                    Debug.Log("🚧 Camino bloqueado, buscando ruta alternativa");
+                }
+            }
+        }
+        
+        Vector3 targetVelocity = direction * currentSpeed;
+        rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
+        
+        // ✅ Debug visual mejorado
+        Debug.DrawLine(transform.position, lastKnownPlayerPosition, 
+                      fov != null && fov.canSeePlayer ? Color.red : Color.yellow);
+    }
+
+    protected virtual void PatrolBehavior()
+    {
+        // Comportamiento base vacío - será overrideado en SoldierAIController
+        ChangeState(AIState.Idle); // Usar ChangeState en lugar de asignación directa
+    }
 
     protected virtual void IdleBehavior()
     {
         // Comportamiento cuando está inactivo
+    }
+
+    protected virtual void DamagedBehavior()
+    {
+        // Frenar en seco al enemigo
+        if (rb != null)
+        {
+            rb.linearVelocity = Vector3.zero;
+        }
+        
+        // No hacer nada más - la corutina se encargará de volver al estado anterior
     }
 
     protected virtual void RotateTowards(Vector3 targetPosition)
@@ -334,7 +359,7 @@ protected virtual void PatrolBehavior()
     protected virtual void StartChasing()
     {
         isChasing = true;
-        currentState = AIState.Chasing;
+        ChangeState(AIState.Chasing); // Usar ChangeState en lugar de asignación directa
         chaseTimer = 0f;
         
         if (enemyConfig.detectionSound != null)
@@ -342,15 +367,37 @@ protected virtual void PatrolBehavior()
             AudioSource.PlayClipAtPoint(enemyConfig.detectionSound, transform.position);
         }
         
-     //   Debug.Log($"{enemyConfig.enemyName} comenzó a perseguir al jugador - PERSISTENTE!");
+        if (enableStateDebug)
+        {
+            Debug.Log($"{enemyConfig.enemyName} comenzó a perseguir al jugador");
+        }
     }
 
     public virtual void TakeDamage(float damageAmount)
     {
         if (enemyConfig.isInvulnerable || currentState == AIState.Dead) return;
 
+        // Guardar el estado actual antes del daño (excepto si ya está en Damaged)
+        if (currentState != AIState.Damaged)
+        {
+            stateBeforeDamage = currentState;
+        }
+
         currentHealth -= damageAmount;
         OnHealthChanged?.Invoke(currentHealth / enemyConfig.maxHealth);
+        
+        // Cambiar al estado Damaged
+        if (currentState != AIState.Damaged)
+        {
+            ChangeState(AIState.Damaged);
+            
+            // Iniciar la recuperación del estado Damaged
+            if (damageRecoveryCoroutine != null)
+            {
+                StopCoroutine(damageRecoveryCoroutine);
+            }
+            damageRecoveryCoroutine = StartCoroutine(RecoverFromDamage());
+        }
         
         // Efecto de golpe
         if (enemyConfig.hitEffect != null)
@@ -367,12 +414,45 @@ protected virtual void PatrolBehavior()
         {
             Die();
         }
+        
+        UpdateStateDisplays();
+    }
+
+    protected virtual IEnumerator RecoverFromDamage()
+    {
+        if (enableStateDebug)
+        {
+//            Debug.Log($"💥 {enemyConfig.enemyName} en estado Damaged por 1 segundo");
+        }
+        
+        // Esperar 1 segundo en estado Damaged
+        yield return new WaitForSeconds(1f);
+        
+        // Volver al estado anterior (a menos que esté muerto)
+        if (currentState != AIState.Dead)
+        {
+            if (enableStateDebug)
+            {
+//                Debug.Log($"🔄 {enemyConfig.enemyName} recuperándose del daño, volviendo a: {stateBeforeDamage}");
+            }
+            
+            ChangeState(stateBeforeDamage);
+        }
+        
+        damageRecoveryCoroutine = null;
     }
 
     protected virtual void Die()
     {
+        // Detener la corutina de daño si está activa
+        if (damageRecoveryCoroutine != null)
+        {
+            StopCoroutine(damageRecoveryCoroutine);
+            damageRecoveryCoroutine = null;
+        }
+
         currentHealth = 0;
-        currentState = AIState.Dead;
+        ChangeState(AIState.Dead); // Usar ChangeState en lugar de asignación directa
         
         // Efectos de muerte
         if (enemyConfig.deathEffect != null)
@@ -394,14 +474,23 @@ protected virtual void PatrolBehavior()
         SetEnemyVisible(false);
         
         Debug.Log($"{enemyConfig.enemyName} ha sido derrotado!");
+        UpdateStateDisplays();
     }
 
     public virtual void Revive()
     {
-        currentState = GetDefaultState();
+        // Detener la corutina de daño si está activa
+        if (damageRecoveryCoroutine != null)
+        {
+            StopCoroutine(damageRecoveryCoroutine);
+            damageRecoveryCoroutine = null;
+        }
+
+        ChangeState(GetDefaultState()); // Usar ChangeState en lugar de asignación directa
         currentHealth = enemyConfig.maxHealth;
         isChasing = false;
         lastKnownPlayerPosition = Vector3.zero;
+        stateBeforeDamage = GetDefaultState();
         
         if (fov != null)
         {
@@ -410,6 +499,7 @@ protected virtual void PatrolBehavior()
         
         SetEnemyVisible(true);
         OnHealthChanged?.Invoke(1f);
+        UpdateStateDisplays();
     }
 
     protected virtual void SetEnemyVisible(bool visible)
@@ -437,7 +527,7 @@ protected virtual void PatrolBehavior()
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player") && enemyConfig.canDealDamage)
+        if (other.CompareTag("Player") && enemyConfig.canDealDamage && currentState != AIState.Damaged)
         {
             TPMovement_Controller player = other.GetComponent<TPMovement_Controller>();
             if (player != null)
@@ -455,5 +545,43 @@ protected virtual void PatrolBehavior()
     public string GetEnemyName()
     {
         return enemyConfig != null ? enemyConfig.enemyName : "Unnamed Enemy";
+    }
+
+    // MÉTODO DE DEBUG: Forzar cambio de estado desde inspector
+    [ContextMenu("Debug - Change to Idle")]
+    private void DebugChangeToIdle()
+    {
+        ChangeState(AIState.Idle);
+    }
+
+    [ContextMenu("Debug - Change to Patrolling")]
+    private void DebugChangeToPatrolling()
+    {
+        ChangeState(AIState.Patrolling);
+    }
+
+    [ContextMenu("Debug - Change to Chasing")]
+    private void DebugChangeToChasing()
+    {
+        ChangeState(AIState.Chasing);
+    }
+
+    [ContextMenu("Debug - Change to Damaged")]
+    private void DebugChangeToDamaged()
+    {
+        stateBeforeDamage = currentState;
+        ChangeState(AIState.Damaged);
+        
+        if (damageRecoveryCoroutine != null)
+        {
+            StopCoroutine(damageRecoveryCoroutine);
+        }
+        damageRecoveryCoroutine = StartCoroutine(RecoverFromDamage());
+    }
+
+    [ContextMenu("Debug - Print Current State")]
+    private void DebugPrintCurrentState()
+    {
+        Debug.Log($"🔍 {enemyConfig.enemyName} - Estado actual: {currentState}, Estado anterior: {previousState}, Estado antes del daño: {stateBeforeDamage}, Persiguiendo: {isChasing}");
     }
 }

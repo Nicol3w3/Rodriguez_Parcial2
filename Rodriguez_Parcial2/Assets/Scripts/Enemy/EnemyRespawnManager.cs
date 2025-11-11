@@ -110,7 +110,7 @@ public class EnemyRespawnManager : MonoBehaviour
             }
         }
 
-        Debug.Log($"🔁 Respawned {respawnedCount} enemigos");
+//        Debug.Log($"🔁 Respawned {respawnedCount} enemigos");
     }
 
     public void RespawnEnemy(AIController enemy)
@@ -122,7 +122,7 @@ public class EnemyRespawnManager : MonoBehaviour
         enemy.transform.rotation = data.originalRotation;
         enemy.Revive();
 
-        Debug.Log($"🔁 Respawned {enemy.GetEnemyName()}");
+//        Debug.Log($"🔁 Respawned {enemy.GetEnemyName()}");
     }
 
     Vector3 GetSafeSpawnPosition(Vector3 desiredPosition)
@@ -143,6 +143,6 @@ public class EnemyRespawnManager : MonoBehaviour
 
     public void NotifyEnemyDeath(AIController deadEnemy)
     {
-        Debug.Log($"💀 {deadEnemy.GetEnemyName()} ha muerto. Usa F3 para respawn.");
+//        Debug.Log($"💀 {deadEnemy.GetEnemyName()} ha muerto. Usa F3 para respawn.");
     }
 }
