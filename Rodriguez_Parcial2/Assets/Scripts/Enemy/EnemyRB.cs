@@ -37,7 +37,7 @@ public class EnemyRB : MonoBehaviour
         rb.interpolation = RigidbodyInterpolation.Interpolate;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         
-        Debug.Log("✅ Física del enemigo corregida: " + gameObject.name);
+//        Debug.Log("✅ Física del enemigo corregida: " + gameObject.name);
     }
 
     void FixedUpdate()

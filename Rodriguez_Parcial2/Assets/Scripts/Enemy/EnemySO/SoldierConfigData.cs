@@ -6,6 +6,5 @@ public class SoldierConfigData : EnemyConfigData
     [Header("Soldier Specific")]
     public Transform[] patrolWaypoints;
     public float patrolWaitTime = 2f;
-    public bool canPatrol = true;
     public float attackRange = 3f;
 }

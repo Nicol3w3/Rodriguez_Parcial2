@@ -28,6 +28,13 @@ public class EnemyConfigData : ScriptableObject
     public float damageToPlayer = 5f;
     public bool canDealDamage = true;
     
+    [Header("AI Behavior Settings")]
+    public bool canPatrol = true;
+    public bool canChase = true;
+    public bool usePersistentChase = true; // Soldier: true, Camera: false
+    public bool useObstacleAvoidance = true; // Soldier: true, Camera: false
+    public float chaseTimeout = 0f; // ✅ Ahora puede ser 0 (sin timeout) o un valor alto
+    
     [Header("Visual Settings")]
     public Material enemyMaterial;
     public GameObject deathEffect;

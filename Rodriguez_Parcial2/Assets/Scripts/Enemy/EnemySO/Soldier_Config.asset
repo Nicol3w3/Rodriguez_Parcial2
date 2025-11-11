@@ -9,7 +9,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d3bb2c28458f3594da3131e23dff50aa, type: 3}
+  m_Script: {fileID: 11500000, guid: 08a9a9cc0d595df45a65dffa3d4e685f, type: 3}
   m_Name: Soldier_Config
   m_EditorClassIdentifier: 
   enemyName: 
@@ -30,13 +30,14 @@ MonoBehaviour:
     m_Bits: 8
   damageToPlayer: 5
   canDealDamage: 1
+  canPatrol: 1
+  canChase: 1
+  usePersistentChase: 1
+  useObstacleAvoidance: 1
+  chaseTimeout: 0
   enemyMaterial: {fileID: 0}
   deathEffect: {fileID: 0}
   hitEffect: {fileID: 0}
   detectionSound: {fileID: 0}
   deathSound: {fileID: 0}
   hitSound: {fileID: 0}
-  patrolWaypoints: []
-  patrolWaitTime: 2
-  canPatrol: 1
-  attackRange: 3

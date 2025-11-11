@@ -8,20 +8,27 @@ public class AIController : MonoBehaviour
     [Header("Ground Detection")]
     public float groundCheckDistance = 0.1f;
     public LayerMask groundMask = 1; // Capa por defecto
-    private bool isGrounded;
+    protected bool isGrounded;
 
     [Header("Runtime References")]
     protected Rigidbody rb;
     protected FieldOfView fov;
     protected Collider damageCollider;
+
+    [Header("Debug Info - Read Only")]
+    [SerializeField] private string currentStateDisplay;
+    [SerializeField] private float currentHealthDisplay;
     
     // Estados protegidos para herencia
     protected enum AIState { Patrolling, Chasing, Dead, Idle }
     protected AIState currentState = AIState.Idle;
     
+    
     protected float currentHealth;
-    protected bool isChasing = false;
+    public bool isChasing { get; protected set; } = false;
     protected Vector3 lastKnownPlayerPosition;
+    protected float chaseTimer = 0f;
+    protected ObstacleAvoidance obstacleAvoidance;
 
     // Eventos
     public System.Action<float> OnHealthChanged;
@@ -31,6 +38,59 @@ public class AIController : MonoBehaviour
     {
         InitializeFromConfig();
         RegisterWithManager();
+        if (enemyConfig.useObstacleAvoidance)
+        {
+            obstacleAvoidance = GetComponent<ObstacleAvoidance>();
+            if (obstacleAvoidance == null)
+            {
+                Debug.LogWarning($"ObstacleAvoidance no encontrado en {enemyConfig.enemyName}");
+            }
+        }
+        
+        Debug.Log($"✅ {enemyConfig.enemyName} inicializado - " +
+                 $"Persecución: {enemyConfig.usePersistentChase}, " +
+                 $"Evasión: {enemyConfig.useObstacleAvoidance}");
+        
+        SetupDamageCollider();
+        
+        if (enemyConfig.useObstacleAvoidance)
+        {
+            obstacleAvoidance = GetComponent<ObstacleAvoidance>();
+            if (obstacleAvoidance == null)
+            {
+                Debug.LogWarning($"ObstacleAvoidance no encontrado en {enemyConfig.enemyName}");
+            }
+        }
+    }
+
+    private void SetupDamageCollider()
+    {
+        // Asegurarse de que hay un Collider
+        Collider col = GetComponent<Collider>();
+        if (col == null)
+        {
+            // Si no hay collider, agregar uno
+            gameObject.AddComponent<CapsuleCollider>();
+            col = GetComponent<Collider>();
+        }
+        
+        // Configurar collider para detectar balas
+        col.isTrigger = false; // ✅ IMPORTANTE: Debe ser false para collision detection
+        
+        // Agregar Rigidbody si no existe
+        if (GetComponent<Rigidbody>() == null)
+        {
+            Rigidbody rb = gameObject.AddComponent<Rigidbody>();
+            rb.isKinematic = false;
+            rb.useGravity = true;
+            rb.constraints = RigidbodyConstraints.FreezeRotation;
+        }
+    }
+
+    public void DebugTakeDamage(float damageAmount)
+    {
+        Debug.Log($"🎯 DEBUG: {enemyConfig.enemyName} recibió {damageAmount} de daño. Salud actual: {currentHealth}");
+        TakeDamage(damageAmount);
     }
 
     protected virtual void InitializeFromConfig()
@@ -63,10 +123,14 @@ public class AIController : MonoBehaviour
             damageCollider.isTrigger = true;
         }
 
-        Debug.Log($"✅ {enemyConfig.enemyName} inicializado - Salud: {currentHealth}");
+//        Debug.Log($"✅ {enemyConfig.enemyName} inicializado - Salud: {currentHealth}");
     }
 
-    
+    protected virtual void Update()
+    {
+        UpdateInspectorDisplay();
+    }
+
     protected virtual void FixedUpdate()
     {
         if (currentState == AIState.Dead) return;
@@ -74,6 +138,20 @@ public class AIController : MonoBehaviour
         CheckGrounded();
         HandleDetection();
         HandleStateBehavior();
+        HandleChasePersistence();
+    }
+
+    protected virtual AIState GetDefaultState()
+    {
+        return AIState.Idle;
+    }
+
+    private void UpdateInspectorDisplay()
+    {
+        currentStateDisplay = currentState.ToString();
+        currentHealthDisplay = currentHealth;
+        //isGroundedDisplay = isGrounded;
+        //lastKnownPositionDisplay = lastKnownPlayerPosition;
     }
 
      private void CheckGrounded()
@@ -113,33 +191,63 @@ public class AIController : MonoBehaviour
 
     protected virtual void HandleDetection()
 {
-    if (fov != null)
+    if (fov != null && fov.playerRef != null)
     {
-        // Debug del FieldOfView
         if (fov.canSeePlayer)
         {
-//            Debug.Log($"🎯 JUGADOR DETECTADO - Posición: {fov.playerRef.transform.position}");
-        }
-        
-        if (fov.canSeePlayer)
-        {
-            if (!isChasing)
+            if (!isChasing && enemyConfig.canChase)
             {
                 StartChasing();
             }
             lastKnownPlayerPosition = fov.playerRef.transform.position;
+            chaseTimer = 0f;
         }
-        else if (isChasing)
+        // ✅ PERSECUCIÓN PERSISTENTE: Seguir al jugador aunque no lo vea
+        else if (isChasing && enemyConfig.usePersistentChase)
         {
-        //    Debug.Log($"❌ PERDIÓ AL JUGADOR - Buscando en última posición conocida");
-            StopChasing();
+            // Actualizar posición continuamente mientras esté persiguiendo
+            lastKnownPlayerPosition = fov.playerRef.transform.position;
+            
+            // Debug para mostrar que está persiguiendo sin ver
+           // Debug.Log($"{enemyConfig.enemyName} persiguiendo sin visión directa");
         }
-    }
-    else
-    {
-        Debug.LogWarning("FieldOfView no encontrado en el enemy");
     }
 }
+     protected virtual void HandleChasePersistence()
+    {
+        // ✅ SOLO para enemigos con persecución persistente
+        if (!enemyConfig.usePersistentChase) return;
+        
+        if (isChasing)
+        {
+            chaseTimer += Time.deltaTime;
+            
+            // ✅ Perseguir INDEFINIDAMENTE hasta encontrar al jugador
+            // No hay timeout, solo seguimos persiguiendo
+            
+            // Debug opcional para ver cuánto tiempo lleva persiguiendo
+            if (chaseTimer % 10f < 0.1f) // Cada 10 segundos
+            {
+//                Debug.Log($"{enemyConfig.enemyName} lleva {chaseTimer:F0}s persiguiendo al jugador");
+            }
+        }
+    }
+
+    protected virtual void StopChasing()
+    {
+        // ✅ SOLO se detiene si no usa persecución persistente
+        if (enemyConfig.usePersistentChase)
+        {
+            Debug.Log($"{enemyConfig.enemyName} sigue en persecución persistente");
+            return;
+        }
+        
+        isChasing = false;
+        currentState = GetDefaultState();
+        chaseTimer = 0f;
+        Debug.Log($"{enemyConfig.enemyName} dejó de perseguir al jugador");
+    }
+
 
     protected virtual void HandleStateBehavior()
     {
@@ -159,18 +267,43 @@ public class AIController : MonoBehaviour
 
    protected virtual void ChaseBehavior()
 {
-    if (fov.playerRef == null || !enemyConfig.canMove) return;
+    if (!enemyConfig.canMove || !isGrounded) return;
+
+    // ✅ SIEMPRE intentar obtener la posición actual del jugador si está disponible
+    if (fov != null && fov.playerRef != null)
+    {
+        lastKnownPlayerPosition = fov.playerRef.transform.position;
+    }
 
     Vector3 direction = (lastKnownPlayerPosition - transform.position).normalized;
-    direction.y = 0; // Solo movimiento horizontal
+    direction.y = 0;
     
     RotateTowards(lastKnownPlayerPosition);
     
-    float currentSpeed = isChasing ? enemyConfig.chaseSpeed : enemyConfig.movementSpeed;
+    float currentSpeed = enemyConfig.chaseSpeed;
     
-    // Movimiento simple y directo
+    if (enemyConfig.useObstacleAvoidance && obstacleAvoidance != null)
+    {
+        if (obstacleAvoidance.IsPathBlocked(lastKnownPlayerPosition))
+        {
+            Vector3 alternativeDirection = obstacleAvoidance.FindAlternativeDirection(lastKnownPlayerPosition);
+            direction = alternativeDirection;
+            Debug.Log("🚧 Camino bloqueado, buscando ruta alternativa");
+        }
+    }
+    
     Vector3 targetVelocity = direction * currentSpeed;
     rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
+    
+    // ✅ Debug visual mejorado
+    Debug.DrawLine(transform.position, lastKnownPlayerPosition, 
+                  fov != null && fov.canSeePlayer ? Color.red : Color.yellow);
+    
+    // Mostrar estado de persecución
+    if (fov != null && !fov.canSeePlayer)
+    {
+//        Debug.Log($"🎯 {enemyConfig.enemyName} persiguiendo sin visión - Posición: {lastKnownPlayerPosition}");
+    }
 }
 
 // En AIController.cs
@@ -202,25 +335,14 @@ protected virtual void PatrolBehavior()
     {
         isChasing = true;
         currentState = AIState.Chasing;
+        chaseTimer = 0f;
         
-        // Efecto de sonido
         if (enemyConfig.detectionSound != null)
         {
             AudioSource.PlayClipAtPoint(enemyConfig.detectionSound, transform.position);
         }
         
-//        Debug.Log($"{enemyConfig.enemyName} comenzó a perseguir al jugador!");
-    }
-
-    protected virtual void StopChasing()
-    {
-        isChasing = false;
-        currentState = GetDefaultState();
-    }
-
-    protected virtual AIState GetDefaultState()
-    {
-        return AIState.Idle;
+     //   Debug.Log($"{enemyConfig.enemyName} comenzó a perseguir al jugador - PERSISTENTE!");
     }
 
     public virtual void TakeDamage(float damageAmount)

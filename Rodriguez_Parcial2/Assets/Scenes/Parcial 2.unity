@@ -167,7 +167,7 @@ GameObject:
   - component: {fileID: 81741188}
   - component: {fileID: 81741187}
   - component: {fileID: 81741186}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Cube (2)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -493,6 +493,7 @@ GameObject:
   - component: {fileID: 213982815}
   - component: {fileID: 213982814}
   - component: {fileID: 213982819}
+  - component: {fileID: 213982820}
   m_Layer: 3
   m_Name: Enemy
   m_TagString: Enemy
@@ -559,6 +560,8 @@ MonoBehaviour:
   groundMask:
     serializedVersion: 2
     m_Bits: 8
+  currentStateDisplay: 
+  currentHealthDisplay: 0
 --- !u!114 &213982817
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -623,6 +626,23 @@ CapsuleCollider:
   m_Height: 2
   m_Direction: 1
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &213982820
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 213982813}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 290de700dbc29b247b7f9bc2a6a71e78, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  avoidanceDistance: 5
+  avoidanceForce: 8
+  obstacleMask:
+    serializedVersion: 2
+    m_Bits: 256
 --- !u!1 &225350089
 GameObject:
   m_ObjectHideFlags: 0
@@ -635,7 +655,7 @@ GameObject:
   - component: {fileID: 225350093}
   - component: {fileID: 225350092}
   - component: {fileID: 225350091}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Cube (3)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1396,7 +1416,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   walkSpeed: 3
   runSpeed: 8.5
-  sprintSpeed: 15
+  sprintSpeed: 30
   acceleration: 15
   deceleration: 20
   airControl: 2
@@ -1737,7 +1757,7 @@ GameObject:
   - component: {fileID: 792193243}
   - component: {fileID: 792193242}
   - component: {fileID: 792193241}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Cylinder
   m_TagString: Ground
   m_Icon: {fileID: 0}
@@ -1847,7 +1867,7 @@ GameObject:
   - component: {fileID: 802578832}
   - component: {fileID: 802578831}
   - component: {fileID: 802578830}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Cube (7)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2041,7 +2061,7 @@ GameObject:
   - component: {fileID: 877959223}
   - component: {fileID: 877959222}
   - component: {fileID: 877959221}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Cube (1)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2209,7 +2229,7 @@ GameObject:
   - component: {fileID: 1021421680}
   - component: {fileID: 1021421679}
   - component: {fileID: 1021421678}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Cube (5)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2674,7 +2694,7 @@ GameObject:
   - component: {fileID: 1172838574}
   - component: {fileID: 1172838573}
   - component: {fileID: 1172838572}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Cube
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2817,7 +2837,7 @@ GameObject:
   - component: {fileID: 1202892107}
   - component: {fileID: 1202892106}
   - component: {fileID: 1202892105}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Cylinder (1)
   m_TagString: Ground
   m_Icon: {fileID: 0}
@@ -2927,7 +2947,7 @@ GameObject:
   - component: {fileID: 1208463312}
   - component: {fileID: 1208463311}
   - component: {fileID: 1208463310}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Cube (4)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3100,7 +3120,7 @@ GameObject:
   - component: {fileID: 1255484083}
   - component: {fileID: 1255484082}
   - component: {fileID: 1255484081}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Cube (2)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3565,7 +3585,7 @@ GameObject:
   - component: {fileID: 1498864844}
   - component: {fileID: 1498864843}
   - component: {fileID: 1498864842}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Cylinder (4)
   m_TagString: Ground
   m_Icon: {fileID: 0}
@@ -4066,7 +4086,7 @@ GameObject:
   - component: {fileID: 1652847794}
   - component: {fileID: 1652847793}
   - component: {fileID: 1652847792}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Cube (3)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4594,6 +4614,10 @@ PrefabInstance:
       propertyPath: Orbits.Bottom.Height
       value: -1.5
       objectReference: {fileID: 0}
+    - target: {fileID: 8180816620205836228, guid: b36c144e14f4b8a4db32d52f901b1971, type: 3}
+      propertyPath: CollideAgainst.m_Bits
+      value: 272
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -4878,7 +4902,7 @@ GameObject:
   - component: {fileID: 2109586102}
   - component: {fileID: 2109586101}
   - component: {fileID: 2109586100}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Cylinder (3)
   m_TagString: Ground
   m_Icon: {fileID: 0}
