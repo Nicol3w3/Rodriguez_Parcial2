@@ -543,9 +543,9 @@ public class AIController : MonoBehaviour
     }
 
     public string GetEnemyName()
-    {
-        return enemyConfig != null ? enemyConfig.enemyName : "Unnamed Enemy";
-    }
+{
+    return enemyConfig != null ? enemyConfig.enemyName : "Unnamed Enemy";
+}
 
     // MÉTODO DE DEBUG: Forzar cambio de estado desde inspector
     [ContextMenu("Debug - Change to Idle")]
@@ -584,4 +584,9 @@ public class AIController : MonoBehaviour
     {
         Debug.Log($"🔍 {enemyConfig.enemyName} - Estado actual: {currentState}, Estado anterior: {previousState}, Estado antes del daño: {stateBeforeDamage}, Persiguiendo: {isChasing}");
     }
+    public string GetCurrentState()
+    {
+    return currentState.ToString();
+    }
+    
 }
