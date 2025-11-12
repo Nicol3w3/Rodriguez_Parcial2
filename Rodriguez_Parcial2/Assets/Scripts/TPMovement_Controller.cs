@@ -72,9 +72,12 @@ public class TPMovement_Controller : MonoBehaviour
 
     [Header("UI References")]
     public Slider healthBarSlider;
-    public Text healthText;
+    public TextMeshProUGUI healthText;
     public Slider staminaBarSlider;
+    public TextMeshProUGUI staminaText;
     public TextMeshProUGUI ammoText;
+    public TextMeshProUGUI magazinesText;
+    public GameObject reloadIndicator;
 
     [Header("Input System")]
     public InputActionReference movementAction;
@@ -176,10 +179,14 @@ public class TPMovement_Controller : MonoBehaviour
 
         FindEnemyFOV();
         UpdateHealthUI();
-        GroundedCheck();
         UpdateStaminaUI();
         UpdateAmmoUI();
+        
+        // Ocultar indicador de recarga si existe
+        if (reloadIndicator != null)
+            reloadIndicator.SetActive(false);
     }
+
 
     private void OnEnable()
     {
@@ -382,7 +389,7 @@ public class TPMovement_Controller : MonoBehaviour
             // Debug visual
             if (isCrouching && Time.frameCount % 30 == 0)
             {
-                Debug.Log($"🧎 Escala: {playerVisual.localScale} | Posición: {playerVisual.localPosition}");
+//                Debug.Log($"🧎 Escala: {playerVisual.localScale} | Posición: {playerVisual.localPosition}");
             }
         }
     }
@@ -418,7 +425,7 @@ public class TPMovement_Controller : MonoBehaviour
     private void OnCrouchPerformed(InputAction.CallbackContext context)
     {
         isCrouching = !isCrouching;
-        Debug.Log($"🧎 {(isCrouching ? "Agachado" : "De pie")}");
+//        Debug.Log($"🧎 {(isCrouching ? "Agachado" : "De pie")}");
     }
 
     // ✅ NUEVO: Recargar con la tecla R
@@ -442,13 +449,17 @@ public class TPMovement_Controller : MonoBehaviour
     {
         isReloading = true;
         canShoot = false;
+        
+        // Mostrar indicador de recarga
+        if (reloadIndicator != null)
+            reloadIndicator.SetActive(true);
+            
         Debug.Log("🔄 Recargando...");
         
-        // Simular tiempo de recarga (1 segundo)
         Invoke(nameof(FinishReload), 1f);
     }
 
-    private void FinishReload()
+     private void FinishReload()
     {
         int ammoNeeded = maxAmmo - currentAmmo;
         int ammoToAdd = Mathf.Min(ammoNeeded, maxAmmo, currentMagazines * maxAmmo);
@@ -459,16 +470,43 @@ public class TPMovement_Controller : MonoBehaviour
         isReloading = false;
         canShoot = true;
         
-        Debug.Log($"✅ Recarga completada: {currentAmmo}/{maxAmmo} | Cargadores: {currentMagazines}");
+        // Ocultar indicador de recarga
+        if (reloadIndicator != null)
+            reloadIndicator.SetActive(false);
+        
+     //   Debug.Log($"✅ Recarga completada: {currentAmmo}/{maxAmmo} | Cargadores: {currentMagazines}");
         UpdateAmmoUI();
     }
 
     // ✅ NUEVO: Actualizar UI de munición
-    private void UpdateAmmoUI()
+   private void UpdateAmmoUI()
     {
+        // Actualizar texto de munición actual
         if (ammoText != null)
         {
-            ammoText.text = $"{currentAmmo}/{maxAmmo} | ⭕ {currentMagazines}";
+            ammoText.text = $"{currentAmmo}";
+            
+            // Cambiar color según la munición
+            if (currentAmmo > maxAmmo * 0.3f)
+                ammoText.color = Color.white;
+            else if (currentAmmo > 0)
+                ammoText.color = Color.yellow;
+            else
+                ammoText.color = Color.red;
+        }
+
+        // Actualizar texto de cargadores
+        if (magazinesText != null)
+        {
+            magazinesText.text = $"{currentMagazines}";
+            
+            // Cambiar color según cargadores restantes
+            if (currentMagazines > 1)
+                magazinesText.color = Color.white;
+            else if (currentMagazines > 0)
+                magazinesText.color = Color.yellow;
+            else
+                magazinesText.color = Color.red;
         }
     }
 
@@ -490,7 +528,7 @@ public class TPMovement_Controller : MonoBehaviour
                 verticalVelocity.y = Mathf.Sqrt(jumpHeight * -2f * Physics.gravity.y);
                 isJumping = true;
                 jumpTimeoutDelta = jumpTimeout;
-                Debug.Log("🦘 Saltando!");
+//                Debug.Log("🦘 Saltando!");
             }
 
             // Manejar timeout del salto
@@ -625,18 +663,17 @@ public class TPMovement_Controller : MonoBehaviour
             {
                 ShootGun();
                 currentAmmo--;
-                UpdateAmmoUI();
+                UpdateAmmoUI(); // ✅ ACTUALIZAR UI DESPUÉS DE DISPARAR
                 nextFireTime = Time.time + fireRate;
                 
                 if (currentAmmo <= 0)
                 {
-                    Debug.Log("⚠️ Recámara vacía - Presiona R para recargar");
+                //    Debug.Log("⚠️ Recámara vacía - Presiona R para recargar");
                 }
             }
             else
             {
-                Debug.Log("❌ Sin munición - Presiona R para recargar");
-                // Auto-recarga si hay cargadores disponibles
+               // Debug.Log("❌ Sin munición - Presiona R para recargar");
                 if (currentMagazines > 0 && !isReloading)
                 {
                     StartReload();
@@ -721,7 +758,7 @@ public class TPMovement_Controller : MonoBehaviour
     }
 
     // UI METHODS
-    private void UpdateHealthUI()
+     private void UpdateHealthUI()
     {
         if (healthBarSlider != null)
         {
@@ -730,15 +767,34 @@ public class TPMovement_Controller : MonoBehaviour
 
         if (healthText != null)
         {
-            healthText.text = $"{currentHealth:F0}/{maxHealth:F0}";
+            healthText.text = $"{Mathf.CeilToInt(currentHealth)}/{Mathf.CeilToInt(maxHealth)}";
+            
+            // Cambiar color según la salud
+            if (currentHealth > maxHealth * 0.6f)
+                healthText.color = Color.green;
+            else if (currentHealth > maxHealth * 0.3f)
+                healthText.color = Color.yellow;
+            else
+                healthText.color = Color.red;
         }
     }
 
-    private void UpdateStaminaUI()
+     private void UpdateStaminaUI()
     {
         if (staminaBarSlider != null)
         {
             staminaBarSlider.value = currentStamina / maxStamina;
+        }
+
+        if (staminaText != null)
+        {
+            staminaText.text = $"{currentStamina:F1}/{maxStamina}";
+            
+            // Cambiar color según el stamina
+            if (currentStamina > maxStamina * 0.3f)
+                staminaText.color = Color.cyan;
+            else
+                staminaText.color = Color.red;
         }
     }
 
