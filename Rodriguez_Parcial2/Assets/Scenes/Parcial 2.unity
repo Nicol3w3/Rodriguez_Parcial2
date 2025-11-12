@@ -385,7 +385,7 @@ GameObject:
   - component: {fileID: 143438001}
   - component: {fileID: 143438000}
   - component: {fileID: 143437999}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Roof
   m_TagString: Ground
   m_Icon: {fileID: 0}
@@ -692,8 +692,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f728cf10fc67a3542a82b2cfdc18cb48, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  radius: 5
-  angle: 100
+  radius: 10
+  angle: 60
   playerRef: {fileID: 694132977}
   targetMask:
     serializedVersion: 2
