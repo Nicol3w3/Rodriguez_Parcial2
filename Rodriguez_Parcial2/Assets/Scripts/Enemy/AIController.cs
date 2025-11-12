@@ -38,6 +38,16 @@ public class AIController : MonoBehaviour
     protected AIState previousState = AIState.Idle;
     protected AIState stateBeforeDamage; // Para recordar el estado antes del daño
 
+    [Header("Shooting Configuration")]
+    [SerializeField] private bool canShoot = false;
+    [SerializeField] private Transform shootPoint;
+    [SerializeField] private float bulletDamage = 25f;
+    
+    [Header("Shooting Parameters")]
+    [SerializeField] private float shootCooldown = 1f;
+    [SerializeField] private GameObject projectilePrefab;
+
+    private float lastShootTime;
     
     
     protected float currentHealth;
@@ -53,7 +63,7 @@ public class AIController : MonoBehaviour
 
     // Debug de estados
     [Header("State Debug")]
-    [SerializeField] private bool enableStateDebug = true;
+    [SerializeField] protected bool enableStateDebug = true;
 
     protected virtual void Start()
     {
@@ -180,6 +190,10 @@ public class AIController : MonoBehaviour
     protected virtual void Update()
     {
         UpdateStateDisplays(); // Mantener actualizado en tiempo real
+        if (canShoot && CanShootNow())
+        {
+            TryShoot();
+        }
     }
 
     protected virtual void FixedUpdate()
@@ -684,4 +698,51 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         lastKnownPlayerPosition = GetComponent<FieldOfView>().playerRef.transform.position;
     }
 }
+private bool CanShootNow()
+    {
+        return Time.time >= lastShootTime + shootCooldown;
+    }
+    
+    private void TryShoot()
+    {
+        // Tu lógica de disparo aquí
+        if (projectilePrefab != null && shootPoint != null)
+        {
+            Instantiate(projectilePrefab, shootPoint.position, shootPoint.rotation);
+            lastShootTime = Time.time;
+        }
+    }
+    
+    // Método público para cambiar el estado de disparo
+    public void SetShootingEnabled(bool enabled)
+    {
+        canShoot = enabled;
+    }
+
+private void Shoot()
+{
+    if (BulletPool.Instance == null) return;
+
+    var bullet = BulletPool.Instance.GetBullet<BulletBase>(
+        gameObject, shootPoint.position, shootPoint.forward, bulletDamage);
+
+    if (bullet != null)
+    {
+        HybridBullet hybridBullet = bullet.GetComponent<HybridBullet>();
+        if (hybridBullet != null)
+        {
+            hybridBullet.dueño = this.gameObject;
+            hybridBullet.isPlayerBullet = false;
+            
+            // ✅ LLAMAR AL MÉTODO DE LANZAMIENTO
+            hybridBullet.LaunchProjectile(shootPoint.forward);
+        }
+        
+        bullet.gameObject.layer = LayerMask.NameToLayer("EnemyBullets");
+        bullet.tag = "EnemyBullet";
+        
+        Debug.Log("🔫 Enemigo disparó");
+    }
 }
+}
+

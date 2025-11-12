@@ -12,7 +12,7 @@ public abstract class BulletBase : MonoBehaviour
     protected float spawnTime;
     protected bool isActive;
     protected Vector3 startPosition;
-    protected GameObject owner;
+    protected GameObject Wwner;
 
     // Eventos para comunicación
     public System.Action<BulletBase, GameObject> OnBulletHit;
@@ -20,7 +20,7 @@ public abstract class BulletBase : MonoBehaviour
 
     public virtual void Initialize(GameObject bulletOwner, Vector3 position, Vector3 direction, float bulletDamage = -1)
     {
-        owner = bulletOwner;
+        Wwner = bulletOwner;
         transform.position = position;
         transform.rotation = Quaternion.LookRotation(direction);
         startPosition = position;
@@ -40,7 +40,7 @@ public abstract class BulletBase : MonoBehaviour
         if (!isActive) return;
         
         // Ignorar al dueño de la bala
-        if (hitObject == owner) return;
+        if (hitObject == Wwner) return;
         
         // Aplicar daño si es aplicable
         if (CanDamageObject(hitObject))
@@ -61,8 +61,8 @@ public abstract class BulletBase : MonoBehaviour
     protected virtual bool CanDamageObject(GameObject target)
     {
         // Verificar por tag (flexible)
-        if (target.CompareTag("Enemy") && owner.CompareTag("Player")) return true;
-        if (target.CompareTag("Player") && owner.CompareTag("Enemy")) return true;
+        if (target.CompareTag("Enemy") && Wwner.CompareTag("Player")) return true;
+        if (target.CompareTag("Player") && Wwner.CompareTag("Enemy")) return true;
         
         // Verificar por layer
         if (hitLayers != 0 && ((1 << target.layer) & hitLayers) != 0) return true;

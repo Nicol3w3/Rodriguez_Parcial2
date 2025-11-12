@@ -1,0 +1,53 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d3bb2c28458f3594da3131e23dff50aa, type: 3}
+  m_Name: Soldier_Config 1
+  m_EditorClassIdentifier: 
+  enemyName: 
+  enemyType: 0
+  maxHealth: 100
+  isInvulnerable: 0
+  movementSpeed: 3
+  chaseSpeed: 5
+  rotationSpeed: 5
+  canMove: 1
+  detectionRadius: 10
+  detectionAngle: 90
+  targetMask:
+    serializedVersion: 2
+    m_Bits: 64
+  obstructionMask:
+    serializedVersion: 2
+    m_Bits: 8
+  damageToPlayer: 5
+  canDealDamage: 1
+  canPatrol: 1
+  canChase: 1
+  usePersistentChase: 1
+  useObstacleAvoidance: 1
+  chaseTimeout: 0
+  enemyMaterial: {fileID: 0}
+  deathEffect: {fileID: 0}
+  hitEffect: {fileID: 0}
+  detectionSound: {fileID: 0}
+  deathSound: {fileID: 0}
+  hitSound: {fileID: 0}
+  patrolWaypoints: []
+  patrolWaitTime: 2
+  attackRange: 3
+  canShoot: 1
+  shootRange: 15
+  fireRate: 1.5
+  bulletDamage: 20
+  bulletPrefab: {fileID: 0}
+  shootPoint: {fileID: 0}
+  shootSound: {fileID: 0}

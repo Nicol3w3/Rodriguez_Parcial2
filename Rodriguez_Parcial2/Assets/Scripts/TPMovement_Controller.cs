@@ -682,7 +682,7 @@ public class TPMovement_Controller : MonoBehaviour
         }
     }
 
-    private void ShootGun()
+  private void ShootGun()
 {
     if (BulletPool.Instance == null)
     {
@@ -690,10 +690,7 @@ public class TPMovement_Controller : MonoBehaviour
         return;
     }
 
-    // ✅ CORREGIDO: Obtener posición y dirección exactas
     Vector3 shootPosition = barrelTransform.position;
-    
-    // ✅ DIRECCIÓN EXACTA DESDE LA CÁMARA AL CENTRO DE LA PANTALLA
     Vector3 shootDirection = GetShootDirection();
     
     // Debug visual
@@ -705,11 +702,22 @@ public class TPMovement_Controller : MonoBehaviour
 
     if (bullet != null)
     {
+        // ✅ AGREGAR: Configurar como bala del jugador
+        HybridBullet bulletScript = bullet.GetComponent<HybridBullet>();
+        if (bulletScript != null)
+        {
+            bulletScript.dueño = this.gameObject;
+            bulletScript.isPlayerBullet = true;
+            
+            // Opcional: También configurar layer
+            bullet.gameObject.layer = LayerMask.NameToLayer("PlayerBullets");
+        }
+
         bullet.SetVisualRange(bulletVisualRange);
         bullet.SetRaycastRange(bulletRaycastRange);
         bullet.OnBulletHit += OnBulletHit;
         
-//        Debug.Log($"🔫 Disparo - Posición: {shootPosition}, Dirección: {shootDirection}");
+        // Debug.Log($"🔫 Disparo - Posición: {shootPosition}, Dirección: {shootDirection}");
     }
 }
 private Vector3 GetShootDirection()

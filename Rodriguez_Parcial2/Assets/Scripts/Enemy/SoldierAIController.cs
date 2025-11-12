@@ -6,6 +6,12 @@ public class SoldierAIController : AIController
     private int currentWaypointIndex = 0;
     private float patrolTimer = 0f;
 
+    private float nextFireTime = 0f;
+    private bool canShoot = true;
+
+    [Header("Shooting References - Por Instancia")]
+    public Transform shootPoint;
+
     protected override void Start()
     {
         // Verificar que tenemos la config correcta
@@ -29,6 +35,17 @@ public class SoldierAIController : AIController
         if (soldierConfig != null && soldierConfig.canPatrol)
         {
             currentState = AIState.Patrolling;
+        }
+    }
+
+    protected override void Update()
+    {
+        base.Update(); // ✅ IMPORTANTE: Llamar al base.Update()
+        
+        // ✅ NUEVO: Manejar disparos en el estado Chase
+        if (currentState == AIState.Chasing && soldierConfig != null && soldierConfig.canShoot)
+        {
+            HandleShooting();
         }
     }
 
@@ -168,6 +185,156 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
         if (isGrounded)
         {
             rb.linearVelocity = new Vector3(0, rb.linearVelocity.y, 0);
+        }
+    }
+
+     private void HandleShooting()
+    {
+        if (fov == null || !fov.canSeePlayer || fov.playerRef == null) return;
+        
+        // Verificar si está en rango de disparo
+        float distanceToPlayer = Vector3.Distance(transform.position, fov.playerRef.transform.position);
+        if (distanceToPlayer > soldierConfig.shootRange) return;
+        
+        // Verificar línea de visión
+        if (!HasLineOfSightToPlayer()) return;
+        
+        // Verificar rate of fire
+        if (Time.time >= nextFireTime && canShoot)
+        {
+            ShootAtPlayer();
+            nextFireTime = Time.time + soldierConfig.fireRate;
+        }
+    }
+
+    // ✅ NUEVO MÉTODO: Verificar línea de visión
+    private bool HasLineOfSightToPlayer()
+    {
+        if (fov == null || fov.playerRef == null) return false;
+        
+        Vector3 shootPosition = GetShootPosition();
+        Vector3 playerPosition = fov.playerRef.transform.position + Vector3.up * 1f; // Apuntar al centro del cuerpo
+        
+        RaycastHit hit;
+        if (Physics.Raycast(shootPosition, (playerPosition - shootPosition).normalized, out hit, soldierConfig.shootRange, enemyConfig.obstructionMask))
+        {
+            return hit.collider.CompareTag("Player");
+        }
+        
+        return false;
+    }
+
+    // ✅ NUEVO MÉTODO: Realizar disparo
+    private void ShootAtPlayer()
+    {
+        if (fov == null || fov.playerRef == null) return;
+        
+        Vector3 shootPosition = GetShootPosition();
+        Vector3 playerPosition = fov.playerRef.transform.position + Vector3.up * 1f;
+        Vector3 shootDirection = (playerPosition - shootPosition).normalized;
+        
+        // Debug visual del disparo
+        Debug.DrawRay(shootPosition, shootDirection * soldierConfig.shootRange, Color.magenta, 0.5f);
+        
+        // Usar BulletPool si está disponible
+        if (BulletPool.Instance != null && soldierConfig.bulletPrefab != null)
+        {
+            var bullet = BulletPool.Instance.GetBullet<HybridBullet>(
+                gameObject, 
+                shootPosition, 
+                shootDirection, 
+                soldierConfig.bulletDamage
+            );
+            
+            if (bullet != null)
+            {
+                bullet.SetVisualRange(20f);
+                bullet.SetRaycastRange(soldierConfig.shootRange);
+                bullet.OnBulletHit += OnEnemyBulletHit;
+            }
+        }
+        else
+        {
+            // Fallback: raycast directo
+            RaycastHit hit;
+            if (Physics.Raycast(shootPosition, shootDirection, out hit, soldierConfig.shootRange))
+            {
+                if (hit.collider.CompareTag("Player"))
+                {
+                    TPMovement_Controller player = hit.collider.GetComponent<TPMovement_Controller>();
+                    if (player != null)
+                    {
+                        player.TakeDamage(soldierConfig.bulletDamage);
+                    }
+                }
+            }
+        }
+        
+        // Efecto de sonido
+        if (soldierConfig.shootSound != null)
+        {
+            AudioSource.PlayClipAtPoint(soldierConfig.shootSound, transform.position);
+        }
+        
+        // Efecto visual (opcional)
+        // if (muzzleFlash != null) Instantiate(muzzleFlash, shootPosition, Quaternion.LookRotation(shootDirection));
+        
+        if (enableStateDebug)
+        {
+            Debug.Log($"🔫 {enemyConfig.enemyName} disparando al jugador");
+        }
+    }
+
+    // ✅ NUEVO MÉTODO: Obtener posición de disparo
+    private Vector3 GetShootPosition()
+    {
+        // 1. Prioridad: shootPoint del soldier específico
+        if (shootPoint != null)
+        {
+            return shootPoint.position;
+        }
+        
+        // 2. Fallback: shootPoint del config (para compatibilidad)
+        if (soldierConfig != null && soldierConfig.shootPoint != null)
+        {
+            return soldierConfig.shootPoint.position;
+        }
+        
+        // 3. Último recurso: posición por defecto
+        return transform.position + Vector3.up * 1.5f + transform.forward * 0.5f;
+    }
+
+    // ✅ NUEVO MÉTODO: Cuando la bala del enemigo impacta
+    private void OnEnemyBulletHit(BulletBase bullet, GameObject hitObject)
+    {
+        if (hitObject.CompareTag("Player"))
+        {
+            if (enableStateDebug)
+            {
+                Debug.Log($"🎯 {enemyConfig.enemyName} impactó al jugador");
+            }
+        }
+        
+        // Limpiar el evento
+        if (bullet != null)
+        {
+            bullet.OnBulletHit -= OnEnemyBulletHit;
+        }
+    }
+
+    public override void TakeDamage(float damageAmount)
+    {
+        base.TakeDamage(damageAmount);
+        
+        // ✅ FORZAR MODO CHASE SI NO ESTÁ MUERTO
+        if (currentState != AIState.Dead && currentState != AIState.Damaged && !isChasing)
+        {
+            StartChasing();
+            
+            if (enableStateDebug)
+            {
+                Debug.Log($"💥 {enemyConfig.enemyName} recibió daño - Activando modo Chase");
+            }
         }
     }
 }

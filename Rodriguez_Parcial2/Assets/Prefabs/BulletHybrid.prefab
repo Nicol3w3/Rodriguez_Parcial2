@@ -13,9 +13,9 @@ GameObject:
   - component: {fileID: 7535799237002954765}
   - component: {fileID: 2820825820121305883}
   - component: {fileID: 1803444853644166215}
-  m_Layer: 8
+  m_Layer: 10
   m_Name: BulletHybrid
-  m_TagString: Bullet
+  m_TagString: PlayerBullet
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -112,6 +112,8 @@ MonoBehaviour:
   tracerMaterial: {fileID: 2100000, guid: f619dcfcfb4564405b5fe5ea207c9199, type: 2}
   raycastRange: 40
   usePreciseHit: 1
+  owner: {fileID: 0}
+  isPlayerBullet: 1
 --- !u!120 &1803444853644166215
 LineRenderer:
   serializedVersion: 2
@@ -230,9 +232,9 @@ GameObject:
   - component: {fileID: 5354623203114717660}
   - component: {fileID: 4172513942933957559}
   - component: {fileID: 5549755557556445259}
-  m_Layer: 8
+  m_Layer: 10
   m_Name: Sphere
-  m_TagString: Untagged
+  m_TagString: PlayerBullet
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0

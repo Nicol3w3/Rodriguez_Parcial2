@@ -12,6 +12,10 @@ public class HybridBullet : BulletBase
     [Header("Raycast Settings")]
     [SerializeField] private float raycastRange = 100f; // Rango de detección variable
     [SerializeField] private bool usePreciseHit = true;
+
+    [Header("Bullet Ownership")]
+    public GameObject dueño;
+    public bool isPlayerBullet = true;
     
     private Vector3 shootDirection;
     private Vector3 hitPoint;
@@ -21,9 +25,9 @@ public class HybridBullet : BulletBase
     private Rigidbody rb;
     private bool isTracerVisible = true;
 
-   public override void Initialize(GameObject bulletOwner, Vector3 position, Vector3 direction, float bulletDamage = -1)
+   public override void Initialize(GameObject bulletowner, Vector3 position, Vector3 direction, float bulletDamage = -1)
 {
-    base.Initialize(bulletOwner, position, direction, bulletDamage);
+    base.Initialize(bulletowner, position, direction, bulletDamage);
     
     shootDirection = direction.normalized;
     hasRaycastHit = false;
@@ -99,7 +103,7 @@ public class HybridBullet : BulletBase
     }
 }
 
-    private void LaunchProjectile(Vector3 direction)
+    public void LaunchProjectile(Vector3 direction)
 {
     if (rb != null)
     {
@@ -209,7 +213,7 @@ public class HybridBullet : BulletBase
     if (!isActive) return;
     
     // Ignorar al dueño de la bala
-    if (hitObject == owner) return;
+    if (hitObject == dueño) return;
     
 //    Debug.Log($"🔫 HybridBullet impactó: {hitObject.name}");
     
@@ -286,4 +290,30 @@ public class HybridBullet : BulletBase
             Gizmos.DrawLine(transform.position, hitPoint);
         }
     }
+void OnTriggerEnter(Collider other)
+{
+    // ✅ SOLUCIÓN CON TAGS (más simple)
+    if (this.CompareTag("EnemyBullet") && other.CompareTag("Enemy"))
+        return;
+        
+    if (this.CompareTag("PlayerBullet") && other.CompareTag("Player")) 
+        return;
+
+    // ✅ SOLUCIÓN CON LAYERS (más eficiente)
+    if (gameObject.layer == LayerMask.NameToLayer("EnemyBullets") && 
+        other.gameObject.layer == LayerMask.NameToLayer("Enemy"))
+        return;
+
+    // Tu lógica normal de colisión...
+    if (((1 << other.gameObject.layer) & hitLayers) != 0)
+    {
+        TPMovement_Controller player = other.GetComponentInParent<TPMovement_Controller>();
+        if (player != null)
+        {
+            player.TakeDamage(damage);
+        }
+        Destroy(gameObject);
+    }
 }
+}
+
