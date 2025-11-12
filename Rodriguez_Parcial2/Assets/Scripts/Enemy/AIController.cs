@@ -21,11 +21,24 @@ public class AIController : MonoBehaviour
     [SerializeField] private string previousStateDisplay;
     [SerializeField] private float currentHealthDisplay;
     
+    [Header("Obstacle Avoidance")]
+    public bool useAdvancedAvoidance = true;
+    public float avoidanceWeight = 2f; // ✅ AGREGAR ESTA LÍNEA
+    protected Vector3 currentAvoidanceDirection;
+
+    [Header("Pathfinding")]
+    public bool usePathfinding = true;
+    public float recalculatePathInterval = 2f;
+    private DynamicPathfinding pathfinding;
+    private float lastPathRecalculationTime;
+    private Vector3 currentPathTarget;
     // Estados protegidos para herencia
     protected enum AIState { Patrolling, Chasing, Dead, Idle, Damaged }
     protected AIState currentState = AIState.Idle;
     protected AIState previousState = AIState.Idle;
     protected AIState stateBeforeDamage; // Para recordar el estado antes del daño
+
+    
     
     protected float currentHealth;
     public bool isChasing { get; protected set; } = false;
@@ -67,7 +80,15 @@ public class AIController : MonoBehaviour
                 Debug.LogWarning($"ObstacleAvoidance no encontrado en {enemyConfig.enemyName}");
             }
         }
+     if (usePathfinding)
+    {
+        pathfinding = GetComponent<DynamicPathfinding>();
+        if (pathfinding == null)
+        {
+            pathfinding = gameObject.AddComponent<DynamicPathfinding>();
+        }
     }
+}
 
     // MÉTODO CLAVE: Cambiar estado con debug
     protected virtual void ChangeState(AIState newState)
@@ -81,7 +102,7 @@ public class AIController : MonoBehaviour
         
         if (enableStateDebug)
         {
-            Debug.Log($"🔄 {enemyConfig.enemyName} cambió estado: {previousState} → {currentState}");
+            Debug.Log($" {enemyConfig.enemyName} {currentState}");
         }
     }
 
@@ -282,44 +303,111 @@ public class AIController : MonoBehaviour
         }
     }
 
-    protected virtual void ChaseBehavior()
+   protected virtual void ChaseBehavior()
+{
+    if (!enemyConfig.canMove || !isGrounded) return;
+
+    // ✅ ACTUALIZAR POSICIÓN DEL JUGADOR
+    if (fov != null && fov.playerRef != null)
     {
-        if (!enemyConfig.canMove || !isGrounded) return;
-
-        // ✅ SIEMPRE intentar obtener la posición actual del jugador si está disponible
-        if (fov != null && fov.playerRef != null)
-        {
-            lastKnownPlayerPosition = fov.playerRef.transform.position;
-        }
-
-        Vector3 direction = (lastKnownPlayerPosition - transform.position).normalized;
-        direction.y = 0;
-        
-        RotateTowards(lastKnownPlayerPosition);
-        
-        float currentSpeed = enemyConfig.chaseSpeed;
-        
-        if (enemyConfig.useObstacleAvoidance && obstacleAvoidance != null)
-        {
-            if (obstacleAvoidance.IsPathBlocked(lastKnownPlayerPosition))
-            {
-                Vector3 alternativeDirection = obstacleAvoidance.FindAlternativeDirection(lastKnownPlayerPosition);
-                direction = alternativeDirection;
-                
-                if (enableStateDebug)
-                {
-//                    Debug.Log("🚧 Camino bloqueado, buscando ruta alternativa");
-                }
-            }
-        }
-        
-        Vector3 targetVelocity = direction * currentSpeed;
-        rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
-        
-        // ✅ Debug visual mejorado
-        Debug.DrawLine(transform.position, lastKnownPlayerPosition, 
-                      fov != null && fov.canSeePlayer ? Color.red : Color.yellow);
+        lastKnownPlayerPosition = fov.playerRef.transform.position;
     }
+
+    Vector3 moveDirection = GetMovementDirection();
+    
+    RotateTowards(lastKnownPlayerPosition);
+    
+    float currentSpeed = enemyConfig.chaseSpeed;
+    
+    // ✅ MOVIMIENTO
+    Vector3 targetVelocity = moveDirection * currentSpeed;
+    rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
+    
+    // ✅ Debug
+    Debug.DrawLine(transform.position, lastKnownPlayerPosition, 
+                  fov != null && fov.canSeePlayer ? Color.red : Color.yellow);
+}
+
+private Vector3 GetMovementDirection()
+{
+    // ✅ SISTEMA HÍBRIDO: Pathfinding + Evasión de obstáculos
+    if (usePathfinding && pathfinding != null)
+    {
+        return GetPathfindingDirection();
+    }
+    else
+    {
+        // Sistema original de evasión
+        return GetAvoidanceAdjustedDirection(
+            (lastKnownPlayerPosition - transform.position).normalized, 
+            lastKnownPlayerPosition
+        );
+    }
+}
+
+private Vector3 GetPathfindingDirection()
+{
+    Vector3 directionToPlayer = (lastKnownPlayerPosition - transform.position).normalized;
+    
+    // Recalcular ruta periódicamente o si el objetivo cambió
+    if (Time.time - lastPathRecalculationTime > recalculatePathInterval || 
+        currentPathTarget != lastKnownPlayerPosition)
+    {
+        if (pathfinding.CalculatePath(transform.position, lastKnownPlayerPosition))
+        {
+            currentPathTarget = lastKnownPlayerPosition;
+            lastPathRecalculationTime = Time.time;
+        }
+    }
+    
+    // Si tenemos un camino, seguirlo
+    if (pathfinding.HasPath())
+    {
+        Vector3 nextNode = pathfinding.GetNextNode();
+        
+        // Avanzar al siguiente nodo si hemos llegado al actual
+        if (pathfinding.HasReachedNode(transform.position, 1f))
+        {
+            pathfinding.AdvanceToNextNode();
+            nextNode = pathfinding.GetNextNode();
+        }
+        
+        if (nextNode != Vector3.zero)
+        {
+            Vector3 directionToNode = (nextNode - transform.position).normalized;
+            
+            // Combinar con evasión local de obstáculos
+            return GetAvoidanceAdjustedDirection(directionToNode, nextNode);
+        }
+    }
+    
+    // Fallback: usar sistema de evasión directo
+    return GetAvoidanceAdjustedDirection(directionToPlayer, lastKnownPlayerPosition);
+}
+
+protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection, Vector3 targetPosition)
+{
+    Vector3 avoidanceDirection = desiredDirection;
+    
+    if (obstacleAvoidance != null)
+    {
+        // Obtener dirección de evasión del sistema mejorado
+        Vector3 avoidanceDir = obstacleAvoidance.GetAvoidanceDirection(targetPosition);
+        
+        // Combinar dirección deseada con dirección de evasión
+        avoidanceDirection = (desiredDirection + avoidanceDir * avoidanceWeight).normalized;
+        
+        // Actualizar dirección actual para debug
+        currentAvoidanceDirection = avoidanceDir;
+        
+        if (enableStateDebug && avoidanceDir != desiredDirection)
+        {
+//            Debug.Log($"🔄 {enemyConfig.enemyName} ajustando dirección por obstáculos");
+        }
+    }
+    
+    return avoidanceDirection;
+}
 
     protected virtual void PatrolBehavior()
     {
@@ -369,7 +457,7 @@ public class AIController : MonoBehaviour
         
         if (enableStateDebug)
         {
-            Debug.Log($"{enemyConfig.enemyName} comenzó a perseguir al jugador");
+//            Debug.Log($"{enemyConfig.enemyName} comenzó a perseguir al jugador");
         }
     }
 
@@ -473,7 +561,7 @@ public class AIController : MonoBehaviour
         OnDeath?.Invoke();
         SetEnemyVisible(false);
         
-        Debug.Log($"{enemyConfig.enemyName} ha sido derrotado!");
+//        Debug.Log($"{enemyConfig.enemyName} ha sido derrotado!");
         UpdateStateDisplays();
     }
 
@@ -588,5 +676,12 @@ public class AIController : MonoBehaviour
     {
         return currentState.ToString();
     }
-    
+    public void ForceRecalculatePath()
+{
+    if (obstacleAvoidance != null)
+    {
+        // Forzar recálculo del camino
+        lastKnownPlayerPosition = GetComponent<FieldOfView>().playerRef.transform.position;
+    }
+}
 }

@@ -30,20 +30,13 @@ public class HybridBullet : BulletBase
     
     SetupComponents();
     
-    // ✅ REALIZAR RAYCAST DESDE LA POSICIÓN EXACTA DE DISPARO
-    PerformRaycastDetection();
+    // ✅ REALIZAR RAYCAST CON LA DIRECCIÓN EXACTA QUE RECIBIMOS
+    PerformRaycastDetection(position, shootDirection);
     
-    // ✅ SI EL RAYCAST DETECTÓ ALGO, USAR ESA DIRECCIÓN EXACTA
-    if (hasRaycastHit)
-    {
-        // Recalcular dirección hacia el punto de impacto exacto
-        Vector3 exactDirection = (hitPoint - position).normalized;
-        LaunchProjectile(exactDirection);
-    }
-    else
-    {
-        LaunchProjectile(shootDirection);
-    }
+    // ✅ USAR SIEMPRE LA DIRECCIÓN ORIGINAL (que ahora viene corregida)
+    LaunchProjectile(shootDirection);
+    
+//    Debug.Log($"🎯 Bala inicializada - Pos: {position}, Dir: {shootDirection}");
 }
 
     private void SetupComponents()
@@ -79,31 +72,32 @@ public class HybridBullet : BulletBase
         return mat;
     }
 
-    private void PerformRaycastDetection()
+    private void PerformRaycastDetection(Vector3 fromPosition, Vector3 direction)
+{
+    RaycastHit hit;
+    
+    // ✅ USAR LA POSICIÓN Y DIRECCIÓN EXACTAS QUE RECIBIMOS
+    if (Physics.Raycast(fromPosition, direction, out hit, raycastRange, hitLayers | obstacleLayers))
     {
-        RaycastHit hit;
+        hasRaycastHit = true;
+        hitPoint = hit.point;
+        hitObject = hit.collider.gameObject;
         
-        if (Physics.Raycast(transform.position, shootDirection, out hit, raycastRange, hitLayers | obstacleLayers))
+//        Debug.Log($"🎯 Raycast bala detectó: {hitObject.name} a {hit.distance:F2}m");
+        
+        // Si es un obstáculo, ajustar el rango visual
+        bool isObstacle = obstacleLayers != 0 && ((1 << hitObject.layer) & obstacleLayers) != 0;
+        if (isObstacle && hit.distance < maxVisualRange)
         {
-            hasRaycastHit = true;
-            hitPoint = hit.point;
-            hitObject = hit.collider.gameObject;
-            
-//            Debug.Log($"🎯 Raycast detectó: {hitObject.name} a {hit.distance:F2}m");
-            
-            // Si es un obstáculo, ajustar el rango visual
-            bool isObstacle = obstacleLayers != 0 && ((1 << hitObject.layer) & obstacleLayers) != 0;
-            if (isObstacle && hit.distance < maxVisualRange)
-            {
-                maxVisualRange = hit.distance;
-            }
-        }
-        else
-        {
-            hasRaycastHit = false;
-            hitPoint = transform.position + shootDirection * raycastRange;
+            maxVisualRange = hit.distance;
         }
     }
+    else
+    {
+        hasRaycastHit = false;
+        hitPoint = fromPosition + direction * raycastRange;
+    }
+}
 
     private void LaunchProjectile(Vector3 direction)
 {
@@ -210,25 +204,30 @@ public class HybridBullet : BulletBase
         ProcessHit(collision.gameObject, finalHitPoint, finalHitNormal);
     }
 
-    protected override void ProcessHit(GameObject hitObject, Vector3 hitPoint, Vector3 hitNormal)
+   protected override void ProcessHit(GameObject hitObject, Vector3 hitPoint, Vector3 hitNormal)
+{
+    if (!isActive) return;
+    
+    // Ignorar al dueño de la bala
+    if (hitObject == owner) return;
+    
+//    Debug.Log($"🔫 HybridBullet impactó: {hitObject.name}");
+    
+    // ✅ APLICAR DAÑO SI EL OBJETO ESTÁ EN LAS CAPAS DE HIT
+    if (CanDamageObject(hitObject))
     {
-        if (!isActive) return;
-        
-        // Ignorar al dueño de la bala
-        if (hitObject == owner) return;
-        
-//        Debug.Log($"🔫 HybridBullet impactó: {hitObject.name}");
-        
-        // Aplicar daño solo si el raycast ya detectó este objeto o si es enemigo
-        if (hasRaycastHit && hitObject == this.hitObject || CanDamageObject(hitObject))
-        {
-            ApplyDamage(hitObject, damage, hitPoint);
-        }
-        
-        SpawnImpactEffect(hitPoint, hitNormal);
-        OnBulletHit?.Invoke(this, hitObject);
-        Deactivate();
+        ApplyDamage(hitObject, damage, hitPoint);
+//        Debug.Log($"✅ Daño aplicado a: {hitObject.name}");
     }
+    else
+    {
+//        Debug.Log($"❌ Objeto no dañable: {hitObject.name}, Layer: {hitObject.layer}");
+    }
+    
+    SpawnImpactEffect(hitPoint, hitNormal);
+    OnBulletHit?.Invoke(this, hitObject);
+    Deactivate();
+}
 
     public override void Deactivate()
     {

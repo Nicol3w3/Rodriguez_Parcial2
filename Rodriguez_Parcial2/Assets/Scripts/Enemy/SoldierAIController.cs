@@ -71,34 +71,83 @@ public class SoldierAIController : AIController
     }
 
     protected override void ChaseBehavior()
-    {
-        if (!enemyConfig.canMove || !isGrounded) return;
+{
+    if (!enemyConfig.canMove || !isGrounded) return;
 
-        Vector3 direction = (lastKnownPlayerPosition - transform.position).normalized;
-        direction.y = 0; // Solo movimiento horizontal
+    // ✅ ACTUALIZAR POSICIÓN DEL JUGADOR SI ESTÁ VISIBLE
+    if (fov != null && fov.playerRef != null && fov.canSeePlayer)
+    {
+        lastKnownPlayerPosition = fov.playerRef.transform.position;
+    }
+
+    Vector3 directionToPlayer = (lastKnownPlayerPosition - transform.position).normalized;
+    directionToPlayer.y = 0;
+    
+    Vector3 finalDirection = directionToPlayer;
+    
+    // ✅ SISTEMA MEJORADO ESPECÍFICO PARA SOLDADOS
+    if (enemyConfig.useObstacleAvoidance && obstacleAvoidance != null)
+    {
+        finalDirection = GetSoldierAvoidanceDirection(directionToPlayer, lastKnownPlayerPosition);
+    }
+    
+    RotateTowards(lastKnownPlayerPosition);
+    
+    float currentSpeed = enemyConfig.chaseSpeed;
+    
+    // ✅ MOVIMIENTO CON INERCIA
+    Vector3 targetVelocity = finalDirection * currentSpeed;
+    Vector3 currentVelocity = rb.linearVelocity;
+    Vector3 newVelocity = Vector3.Lerp(currentVelocity, targetVelocity, Time.fixedDeltaTime * 5f);
+    newVelocity.y = rb.linearVelocity.y;
+    
+    rb.linearVelocity = newVelocity;
+    
+    // ✅ Debug visual
+    Debug.DrawLine(transform.position, lastKnownPlayerPosition, 
+                  fov != null && fov.canSeePlayer ? Color.red : Color.yellow);
+    Debug.DrawRay(transform.position, finalDirection * 2f, Color.green);
+}
+
+// ✅ SISTEMA MEJORADO PARA SOLDADOS
+private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 targetPosition)
+{
+    Vector3 avoidanceDirection = desiredDirection;
+    
+    if (obstacleAvoidance != null)
+    {
+        // Los soldados son más agresivos en la evasión
+        Vector3 avoidanceDir = obstacleAvoidance.GetAvoidanceDirection(targetPosition);
         
-        RotateTowards(lastKnownPlayerPosition);
+        // Combinar dirección deseada con dirección de evasión
+        float soldierAvoidanceWeight = 2.5f; // Más agresivo que el enemigo base
+        avoidanceDirection = (desiredDirection + avoidanceDir * soldierAvoidanceWeight).normalized;
         
-        float currentSpeed = enemyConfig.chaseSpeed;
-        
-        // ✅ Evasión de obstáculos solo si está habilitado
-        if (enemyConfig.useObstacleAvoidance && obstacleAvoidance != null)
+        // Si el camino está muy bloqueado, priorizar completamente la evasión
+        if (obstacleAvoidance.IsPathBlocked(targetPosition))
         {
-            if (obstacleAvoidance.IsPathBlocked(lastKnownPlayerPosition))
+            // Verificar si hay una ruta alternativa clara
+            RaycastHit hit;
+            if (!Physics.Raycast(transform.position, avoidanceDir, out hit, 3f, obstacleAvoidance.obstacleMask))
             {
-                Vector3 alternativeDirection = obstacleAvoidance.FindAlternativeDirection(lastKnownPlayerPosition);
-                direction = alternativeDirection;
-                Debug.Log("🚧 Camino bloqueado, buscando ruta alternativa");
+                avoidanceDirection = avoidanceDir;
             }
         }
         
-        // ✅ USAR velocity para movimiento físico consistente
-        Vector3 targetVelocity = direction * currentSpeed;
-        rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
-        
-        // ✅ Debug visual de la persecución
-        Debug.DrawLine(transform.position, lastKnownPlayerPosition, Color.red);
+        // Aplicar fuerza de evasión adicional directamente
+        if (avoidanceDir != desiredDirection && rb != null)
+        {
+            rb.AddForce(avoidanceDir * obstacleAvoidance.avoidanceForce * 0.5f, ForceMode.Acceleration);
+        }
     }
+    
+    return avoidanceDirection;
+}
+
+// ✅ ELIMINAR GetSoldierAvoidanceDirection ya que usamos el del AIController
+
+// ✅ NUEVO MÉTODO: Evasión específica para soldados
+
 
     protected override AIState GetDefaultState()
     {

@@ -605,6 +605,7 @@ GameObject:
   - component: {fileID: 213982819}
   - component: {fileID: 213982820}
   - component: {fileID: 213982821}
+  - component: {fileID: 213982822}
   m_Layer: 3
   m_Name: Enemy
   m_TagString: Enemy
@@ -674,6 +675,10 @@ MonoBehaviour:
   currentStateDisplay: 
   previousStateDisplay: 
   currentHealthDisplay: 0
+  useAdvancedAvoidance: 1
+  avoidanceWeight: 2.5
+  usePathfinding: 1
+  recalculatePathInterval: 2
   enableStateDebug: 1
 --- !u!114 &213982817
 MonoBehaviour:
@@ -751,11 +756,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 290de700dbc29b247b7f9bc2a6a71e78, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  avoidanceDistance: 5
-  avoidanceForce: 8
+  avoidanceDistance: 4
+  sideDetectionDistance: 2
   obstacleMask:
     serializedVersion: 2
     m_Bits: 256
+  avoidanceForce: 8
+  steeringForce: 5
+  minObstacleDistance: 1
+  usePredictiveAvoidance: 1
+  predictionDistance: 2
+  avoidanceSmoothness: 2
 --- !u!114 &213982821
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -775,6 +786,24 @@ MonoBehaviour:
   chasingColor: {r: 1, g: 0, b: 0, a: 1}
   damagedColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   deadColor: {r: 0, g: 0, b: 0, a: 1}
+--- !u!114 &213982822
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 213982813}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e897acdf343e6d7439a1d2688fbac225, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  nodeSpacing: 3
+  maxNodes: 15
+  obstacleCheckRadius: 4
+  obstacleMask:
+    serializedVersion: 2
+    m_Bits: 256
 --- !u!1 &225350089
 GameObject:
   m_ObjectHideFlags: 0

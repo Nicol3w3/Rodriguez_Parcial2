@@ -143,8 +143,8 @@ public class TPMovement_Controller : MonoBehaviour
         {
             originalVisualScale = playerVisual.localScale;
             originalVisualPosition = playerVisual.localPosition;
-            Debug.Log($"🔍 Escala visual original: {originalVisualScale}");
-            Debug.Log($"🔍 Posición visual original: {originalVisualPosition}");
+  //          Debug.Log($"🔍 Escala visual original: {originalVisualScale}");
+//            Debug.Log($"🔍 Posición visual original: {originalVisualPosition}");
         }
         
         var playerInput = GetComponent<PlayerInput>();
@@ -683,26 +683,81 @@ public class TPMovement_Controller : MonoBehaviour
     }
 
     private void ShootGun()
+{
+    if (BulletPool.Instance == null)
     {
-        if (BulletPool.Instance == null)
-        {
-            Debug.LogError("BulletPool no encontrado!");
-            return;
-        }
-
-        Vector3 shootPosition = barrelTransform.position;
-        Vector3 shootDirection = cam.forward;
-
-        var bullet = BulletPool.Instance.GetBullet<HybridBullet>(
-            gameObject, shootPosition, shootDirection, bulletDamage);
-
-        if (bullet != null)
-        {
-            bullet.SetVisualRange(bulletVisualRange);
-            bullet.SetRaycastRange(bulletRaycastRange);
-            bullet.OnBulletHit += OnBulletHit;
-        }
+        Debug.LogError("BulletPool no encontrado!");
+        return;
     }
+
+    // ✅ CORREGIDO: Obtener posición y dirección exactas
+    Vector3 shootPosition = barrelTransform.position;
+    
+    // ✅ DIRECCIÓN EXACTA DESDE LA CÁMARA AL CENTRO DE LA PANTALLA
+    Vector3 shootDirection = GetShootDirection();
+    
+    // Debug visual
+    Debug.DrawRay(shootPosition, shootDirection * 50f, Color.red, 2f);
+    Debug.DrawRay(cam.position, cam.forward * 50f, Color.blue, 2f);
+
+    var bullet = BulletPool.Instance.GetBullet<HybridBullet>(
+        gameObject, shootPosition, shootDirection, bulletDamage);
+
+    if (bullet != null)
+    {
+        bullet.SetVisualRange(bulletVisualRange);
+        bullet.SetRaycastRange(bulletRaycastRange);
+        bullet.OnBulletHit += OnBulletHit;
+        
+//        Debug.Log($"🔫 Disparo - Posición: {shootPosition}, Dirección: {shootDirection}");
+    }
+}
+private Vector3 GetShootDirection()
+{
+    if (cam == null) return transform.forward;
+
+    // ✅ OPCIÓN 1: Dirección directa de la cámara (más simple)
+    // return cam.forward;
+    
+    // ✅ OPCIÓN 2: Raycast desde el centro exacto de la pantalla (más preciso)
+    return GetPreciseShootDirection();
+}
+
+// ✅ CORREGIDO: Dirección precisa con raycast
+private Vector3 GetPreciseShootDirection()
+{
+    // ✅ USAR cam.GetComponent<Camera>() para obtener la cámara
+    Camera cameraComponent = cam.GetComponent<Camera>();
+    if (cameraComponent == null)
+    {
+        Debug.LogError("No se encontró componente Camera en el transform de la cámara");
+        return cam.forward;
+    }
+    
+    Ray centerRay = cameraComponent.ScreenPointToRay(new Vector3(Screen.width / 2, Screen.height / 2, 0));
+    RaycastHit hit;
+    float maxRange = 1000f;
+    
+    // Realizar raycast para obtener punto exacto de impacto
+    if (Physics.Raycast(centerRay, out hit, maxRange))
+    {
+        // ✅ DIRECCIÓN EXACTA DESDE EL CAÑÓN HACIA EL PUNTO DE IMPACTO
+        Vector3 exactDirection = (hit.point - barrelTransform.position).normalized;
+        
+//        Debug.Log($"🎯 Impacto raycast: {hit.collider.name} a {hit.distance:F2}m");
+        Debug.DrawLine(barrelTransform.position, hit.point, Color.green, 2f);
+        
+        return exactDirection;
+    }
+    else
+    {
+        // ✅ DIRECCIÓN HACIA UN PUNTO LEJANO EN LA DIRECCIÓN DE LA CÁMARA
+        Vector3 targetPoint = centerRay.origin + centerRay.direction * maxRange;
+        Vector3 exactDirection = (targetPoint - barrelTransform.position).normalized;
+        
+        return exactDirection;
+    }
+}
 
     private void OnBulletHit(BulletBase bullet, GameObject hitObject)
     {
