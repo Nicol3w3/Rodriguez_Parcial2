@@ -5,6 +5,14 @@ public class AIController : MonoBehaviour
 {
     [Header("Enemy Configuration")]
     public EnemyConfigData enemyConfig;
+
+    [Header("Shooting Configuration")]
+    public bool canShoot = false;
+    public float shootRange = 15f;
+    public float fireRate = 1.5f;
+    public float bulletDamage = 20f;
+    public GameObject projectilePrefab;
+    public Transform shootPoint;
     
     [Header("Ground Detection")]
     public float groundCheckDistance = 0.1f;
@@ -15,6 +23,7 @@ public class AIController : MonoBehaviour
     protected Rigidbody rb;
     protected FieldOfView fov;
     protected Collider damageCollider;
+    protected EnemyShootingSystem shootingSystem;
 
     [Header("Debug Info - Read Only")]
     [SerializeField] private string currentStateDisplay;
@@ -38,16 +47,6 @@ public class AIController : MonoBehaviour
     protected AIState previousState = AIState.Idle;
     protected AIState stateBeforeDamage; // Para recordar el estado antes del daño
 
-    [Header("Shooting Configuration")]
-    [SerializeField] private bool canShoot = false;
-    [SerializeField] private Transform shootPoint;
-    [SerializeField] private float bulletDamage = 25f;
-    
-    [Header("Shooting Parameters")]
-    [SerializeField] private float shootCooldown = 1f;
-    [SerializeField] private GameObject projectilePrefab;
-
-    private float lastShootTime;
     
     
     protected float currentHealth;
@@ -63,11 +62,12 @@ public class AIController : MonoBehaviour
 
     // Debug de estados
     [Header("State Debug")]
-    [SerializeField] protected bool enableStateDebug = true;
+    [SerializeField] public bool enableStateDebug = true;
 
     protected virtual void Start()
     {
         InitializeFromConfig();
+        InitializeShootingSystem();
         RegisterWithManager();
         if (enemyConfig.useObstacleAvoidance)
         {
@@ -190,10 +190,8 @@ public class AIController : MonoBehaviour
     protected virtual void Update()
     {
         UpdateStateDisplays(); // Mantener actualizado en tiempo real
-        if (canShoot && CanShootNow())
-        {
-            TryShoot();
-        }
+        HandleShooting();
+
     }
 
     protected virtual void FixedUpdate()
@@ -698,51 +696,36 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         lastKnownPlayerPosition = GetComponent<FieldOfView>().playerRef.transform.position;
     }
 }
-private bool CanShootNow()
+
+ protected virtual void InitializeShootingSystem()
     {
-        return Time.time >= lastShootTime + shootCooldown;
-    }
-    
-    private void TryShoot()
-    {
-        // Tu lógica de disparo aquí
-        if (projectilePrefab != null && shootPoint != null)
+        if (!canShoot) return; // Solo inicializar si puede disparar
+        
+        shootingSystem = GetComponent<EnemyShootingSystem>();
+        if (shootingSystem == null)
         {
-            Instantiate(projectilePrefab, shootPoint.position, shootPoint.rotation);
-            lastShootTime = Time.time;
-        }
-    }
-    
-    // Método público para cambiar el estado de disparo
-    public void SetShootingEnabled(bool enabled)
-    {
-        canShoot = enabled;
-    }
-
-private void Shoot()
-{
-    if (BulletPool.Instance == null) return;
-
-    var bullet = BulletPool.Instance.GetBullet<BulletBase>(
-        gameObject, shootPoint.position, shootPoint.forward, bulletDamage);
-
-    if (bullet != null)
-    {
-        HybridBullet hybridBullet = bullet.GetComponent<HybridBullet>();
-        if (hybridBullet != null)
-        {
-            hybridBullet.dueño = this.gameObject;
-            hybridBullet.isPlayerBullet = false;
-            
-            // ✅ LLAMAR AL MÉTODO DE LANZAMIENTO
-            hybridBullet.LaunchProjectile(shootPoint.forward);
+            shootingSystem = gameObject.AddComponent<EnemyShootingSystem>();
         }
         
-        bullet.gameObject.layer = LayerMask.NameToLayer("EnemyBullets");
-        bullet.tag = "EnemyBullet";
+        // Configurar desde variables del AIController
+        shootingSystem.SetShootingEnabled(canShoot);
+        shootingSystem.SetFireRate(fireRate);
+        shootingSystem.SetShootRange(shootRange);
+        shootingSystem.SetBulletDamage(bulletDamage);
+        shootingSystem.SetProjectilePrefab(projectilePrefab);
         
-        Debug.Log("🔫 Enemigo disparó");
+        if (shootPoint != null)
+        {
+            shootingSystem.SetShootPoint(shootPoint);
+        }
     }
-}
+
+    protected virtual void HandleShooting()
+    {
+        if (!canShoot) return;
+        if (currentState != AIState.Chasing) return;
+        
+        shootingSystem?.TryShootAtPlayer();
+    }
 }
 

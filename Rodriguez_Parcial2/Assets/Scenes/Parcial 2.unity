@@ -238,7 +238,7 @@ GameObject:
   - component: {fileID: 81741186}
   m_Layer: 8
   m_Name: Cube (2)
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -418,7 +418,7 @@ GameObject:
   - component: {fileID: 143437999}
   m_Layer: 8
   m_Name: Roof
-  m_TagString: Ground
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -601,7 +601,7 @@ GameObject:
   - component: {fileID: 186967251}
   m_Layer: 8
   m_Name: Cube (6)
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -712,6 +712,7 @@ GameObject:
   - component: {fileID: 213982820}
   - component: {fileID: 213982821}
   - component: {fileID: 213982822}
+  - component: {fileID: 213982823}
   m_Layer: 3
   m_Name: Enemy
   m_TagString: Enemy
@@ -774,6 +775,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   enemyConfig: {fileID: 11400000, guid: 4dd52b9927716024fabb611762564bb7, type: 2}
+  canShoot: 1
+  shootRange: 15
+  fireRate: 1.5
+  bulletDamage: 20
+  projectilePrefab: {fileID: 6783784475161169135, guid: 6775c05fed271294884a077e1c9d586a, type: 3}
+  shootPoint: {fileID: 71040194}
   groundCheckDistance: 3
   groundMask:
     serializedVersion: 2
@@ -785,11 +792,6 @@ MonoBehaviour:
   avoidanceWeight: 2.5
   usePathfinding: 1
   recalculatePathInterval: 2
-  canShoot: 1
-  shootPoint: {fileID: 71040194}
-  bulletDamage: 25
-  shootCooldown: 4
-  projectilePrefab: {fileID: 1216436124765960016, guid: 318128456f90eb2428c7d21d4215dd7e, type: 3}
   enableStateDebug: 1
 --- !u!114 &213982817
 MonoBehaviour:
@@ -916,6 +918,31 @@ MonoBehaviour:
   obstacleMask:
     serializedVersion: 2
     m_Bits: 256
+--- !u!114 &213982823
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 213982813}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1c1d04b05d5bbd840b5440527e221dd0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  canShoot: 1
+  shootRange: 15
+  fireRate: 1.5
+  bulletDamage: 20
+  projectilePrefab: {fileID: 6783784475161169135, guid: 6775c05fed271294884a077e1c9d586a, type: 3}
+  shootPoint: {fileID: 71040194}
+  projectileSpeed: 30
+  targetType: 0
+  playerTarget: {fileID: 694132977}
+  playerTag: Player
+  muzzleFlash: {fileID: 0}
+  shootSound: {fileID: 0}
+  enableDebug: 1
 --- !u!1 &225350089
 GameObject:
   m_ObjectHideFlags: 0
@@ -930,7 +957,7 @@ GameObject:
   - component: {fileID: 225350091}
   m_Layer: 8
   m_Name: Cube (3)
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -2429,7 +2456,7 @@ GameObject:
   - component: {fileID: 802578830}
   m_Layer: 8
   m_Name: Cube (7)
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -2759,7 +2786,7 @@ GameObject:
   - component: {fileID: 877959221}
   m_Layer: 8
   m_Name: Cube (1)
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3153,7 +3180,7 @@ GameObject:
   - component: {fileID: 1021421678}
   m_Layer: 8
   m_Name: Cube (5)
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3650,7 +3677,7 @@ GameObject:
   - component: {fileID: 1172838572}
   m_Layer: 8
   m_Name: Cube
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -3903,7 +3930,7 @@ GameObject:
   - component: {fileID: 1208463310}
   m_Layer: 8
   m_Name: Cube (4)
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -4076,7 +4103,7 @@ GameObject:
   - component: {fileID: 1255484081}
   m_Layer: 8
   m_Name: Cube (2)
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -4377,9 +4404,9 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1409673234}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Walls
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -4865,15 +4892,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4911391210429157005, guid: b36c144e14f4b8a4db32d52f901b1971, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0.22975291
+      value: 0.22975293
       objectReference: {fileID: 0}
     - target: {fileID: 4911391210429157005, guid: b36c144e14f4b8a4db32d52f901b1971, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0.000000017926125
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4911391210429157005, guid: b36c144e14f4b8a4db32d52f901b1971, type: 3}
       propertyPath: m_LocalRotation.z
-      value: -0.0000000042317834
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4911391210429157005, guid: b36c144e14f4b8a4db32d52f901b1971, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
@@ -5219,9 +5246,9 @@ GameObject:
   - component: {fileID: 1614007483}
   - component: {fileID: 1614007482}
   - component: {fileID: 1614007481}
-  m_Layer: 6
+  m_Layer: 8
   m_Name: Cube (1)
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -5329,7 +5356,7 @@ GameObject:
   - component: {fileID: 1652847792}
   m_Layer: 8
   m_Name: Cube (3)
-  m_TagString: Untagged
+  m_TagString: Wall
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0

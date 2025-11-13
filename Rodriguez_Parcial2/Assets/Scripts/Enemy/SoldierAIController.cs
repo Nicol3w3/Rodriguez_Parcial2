@@ -5,6 +5,7 @@ public class SoldierAIController : AIController
     private SoldierConfigData soldierConfig;
     private int currentWaypointIndex = 0;
     private float patrolTimer = 0f;
+    private EnemyShootingSystem shootingSystem;
 
     private float nextFireTime = 0f;
     private bool canShoot = true;
@@ -12,9 +13,8 @@ public class SoldierAIController : AIController
     [Header("Shooting References - Por Instancia")]
     public Transform shootPoint;
 
-    protected override void Start()
+     protected override void Start()
     {
-        // Verificar que tenemos la config correcta
         if (enemyConfig is SoldierConfigData)
         {
             soldierConfig = (SoldierConfigData)enemyConfig;
@@ -26,6 +26,29 @@ public class SoldierAIController : AIController
         }
 
         base.Start();
+        
+        // Inicializar sistema de disparo
+        InitializeShootingSystem();
+    }
+
+   private void InitializeShootingSystem()
+    {
+        shootingSystem = GetComponent<EnemyShootingSystem>();
+        if (shootingSystem == null)
+            shootingSystem = gameObject.AddComponent<EnemyShootingSystem>();
+        
+        if (soldierConfig != null)
+        {
+            shootingSystem.SetShootingEnabled(soldierConfig.canShoot);
+            shootingSystem.SetFireRate(soldierConfig.fireRate);
+            shootingSystem.SetShootRange(soldierConfig.shootRange);
+            shootingSystem.SetBulletDamage(soldierConfig.bulletDamage);
+            
+            if (soldierConfig.shootPoint != null)
+            {
+                shootingSystem.SetShootPoint(soldierConfig.shootPoint);
+            }
+        }
     }
 
     protected override void InitializeFromConfig()
@@ -39,15 +62,29 @@ public class SoldierAIController : AIController
     }
 
     protected override void Update()
+{
+    base.Update();
+    
+    // DEBUG para confirmar que se ejecuta
+    if (Time.frameCount % 30 == 0)
     {
-        base.Update(); // ✅ IMPORTANTE: Llamar al base.Update()
+        Debug.Log($"🔄 SoldierAIController Update - Estado: {currentState}");
+    }
+    
+    if (currentState == AIState.Chasing && soldierConfig != null && soldierConfig.canShoot)
+    {
+        Debug.Log($"🎯 Estado Chasing detectado - Llamando TryShootAtPlayer");
         
-        // ✅ NUEVO: Manejar disparos en el estado Chase
-        if (currentState == AIState.Chasing && soldierConfig != null && soldierConfig.canShoot)
+        if (shootingSystem != null)
         {
-            HandleShooting();
+            shootingSystem.TryShootAtPlayer();
+        }
+        else
+        {
+            Debug.LogError("❌ shootingSystem es NULL!");
         }
     }
+}
 
     protected override void PatrolBehavior()
     {
@@ -88,43 +125,39 @@ public class SoldierAIController : AIController
     }
 
     protected override void ChaseBehavior()
-{
-    if (!enemyConfig.canMove || !isGrounded) return;
-
-    // ✅ ACTUALIZAR POSICIÓN DEL JUGADOR SI ESTÁ VISIBLE
-    if (fov != null && fov.playerRef != null && fov.canSeePlayer)
     {
-        lastKnownPlayerPosition = fov.playerRef.transform.position;
-    }
+        if (!enemyConfig.canMove || !isGrounded) return;
 
-    Vector3 directionToPlayer = (lastKnownPlayerPosition - transform.position).normalized;
-    directionToPlayer.y = 0;
-    
-    Vector3 finalDirection = directionToPlayer;
-    
-    // ✅ SISTEMA MEJORADO ESPECÍFICO PARA SOLDADOS
-    if (enemyConfig.useObstacleAvoidance && obstacleAvoidance != null)
-    {
-        finalDirection = GetSoldierAvoidanceDirection(directionToPlayer, lastKnownPlayerPosition);
+        if (fov != null && fov.playerRef != null && fov.canSeePlayer)
+        {
+            lastKnownPlayerPosition = fov.playerRef.transform.position;
+        }
+
+        Vector3 directionToPlayer = (lastKnownPlayerPosition - transform.position).normalized;
+        directionToPlayer.y = 0;
+        
+        Vector3 finalDirection = directionToPlayer;
+        
+        if (enemyConfig.useObstacleAvoidance && obstacleAvoidance != null)
+        {
+            finalDirection = GetSoldierAvoidanceDirection(directionToPlayer, lastKnownPlayerPosition);
+        }
+        
+        RotateTowards(lastKnownPlayerPosition);
+        
+        float currentSpeed = enemyConfig.chaseSpeed;
+        
+        Vector3 targetVelocity = finalDirection * currentSpeed;
+        Vector3 currentVelocity = rb.linearVelocity;
+        Vector3 newVelocity = Vector3.Lerp(currentVelocity, targetVelocity, Time.fixedDeltaTime * 5f);
+        newVelocity.y = rb.linearVelocity.y;
+        
+        rb.linearVelocity = newVelocity;
+        
+        Debug.DrawLine(transform.position, lastKnownPlayerPosition, 
+                      fov != null && fov.canSeePlayer ? Color.red : Color.yellow);
+        Debug.DrawRay(transform.position, finalDirection * 2f, Color.green);
     }
-    
-    RotateTowards(lastKnownPlayerPosition);
-    
-    float currentSpeed = enemyConfig.chaseSpeed;
-    
-    // ✅ MOVIMIENTO CON INERCIA
-    Vector3 targetVelocity = finalDirection * currentSpeed;
-    Vector3 currentVelocity = rb.linearVelocity;
-    Vector3 newVelocity = Vector3.Lerp(currentVelocity, targetVelocity, Time.fixedDeltaTime * 5f);
-    newVelocity.y = rb.linearVelocity.y;
-    
-    rb.linearVelocity = newVelocity;
-    
-    // ✅ Debug visual
-    Debug.DrawLine(transform.position, lastKnownPlayerPosition, 
-                  fov != null && fov.canSeePlayer ? Color.red : Color.yellow);
-    Debug.DrawRay(transform.position, finalDirection * 2f, Color.green);
-}
 
 // ✅ SISTEMA MEJORADO PARA SOLDADOS
 private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 targetPosition)
