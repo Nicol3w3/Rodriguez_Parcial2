@@ -105,9 +105,27 @@
                     "initialStateCheck": false
                 },
                 {
-                    "name": "Respawn",
+                    "name": "RespawnEnemy",
                     "type": "Button",
                     "id": "3232d1f7-e558-4663-9366-0d944af09fe6",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Restart",
+                    "type": "Button",
+                    "id": "7619534b-a4dc-44fe-8ed4-5719619d3963",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "RespawnPlayer",
+                    "type": "Button",
+                    "id": "908e3fa9-d0d6-4b61-b3e8-8c173f572f9b",
                     "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
@@ -529,7 +547,7 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "Respawn",
+                    "action": "RespawnEnemy",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
@@ -540,7 +558,7 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "Respawn",
+                    "action": "RespawnEnemy",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
@@ -552,6 +570,50 @@
                     "processors": "",
                     "groups": ";Keyboard&Mouse",
                     "action": "Reload",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "b940d72d-231d-4cb8-82ca-0d8e6285b488",
+                    "path": "",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Restart",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "8e2f75c3-55d6-4728-8d44-371e56094eae",
+                    "path": "<Keyboard>/f2",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Keyboard&Mouse",
+                    "action": "Restart",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "cb47857a-6e33-436c-937a-4ff237912b32",
+                    "path": "",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "RespawnPlayer",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "da21d3a8-7db5-47a5-afdf-3747b55a8c3a",
+                    "path": "<Keyboard>/f1",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Keyboard&Mouse",
+                    "action": "RespawnPlayer",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

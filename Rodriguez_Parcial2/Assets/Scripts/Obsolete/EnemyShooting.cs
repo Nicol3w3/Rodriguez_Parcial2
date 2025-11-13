@@ -24,6 +24,8 @@ public class EnemyShootingSystem : MonoBehaviour
 
     [Header("Debug")]
     [SerializeField] private bool enableDebug = true;
+
+    
     
     private float nextFireTime = 0f;
     private AudioSource audioSource;
@@ -97,7 +99,7 @@ public class EnemyShootingSystem : MonoBehaviour
         // Verificar línea de visión
         if (!HasLineOfSightToPlayer()) 
         {
-            if (enableDebug) Debug.Log("🚧 Línea de visión bloqueada por obstáculo");
+//            if (enableDebug) Debug.Log("🚧 Línea de visión bloqueada por obstáculo");
             return;
         }
         

@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.SceneManagement;
 
 public class TPMovement_Controller : MonoBehaviour
 {
@@ -93,6 +94,18 @@ public class TPMovement_Controller : MonoBehaviour
     [SerializeField] private Transform bulletParent;
     [SerializeField] private float fireRate = 0.5f;
 
+    [Header("Respawn Settings")]
+    public Transform spawnPoint;
+    public InputActionReference respawnAction;
+    public InputActionReference restartSceneAction;
+    
+    // Variables de estado
+    private bool isDead = false;
+    private Vector3 initialSpawnPosition;
+    private Quaternion initialRotation;
+    private Vector3 initialVisualScale;
+    private Vector3 initialVisualPosition;
+
     // Componentes
     private CharacterController controller;
     
@@ -160,6 +173,15 @@ public class TPMovement_Controller : MonoBehaviour
         jumpTimeoutDelta = jumpTimeout;
         fallTimeoutDelta = fallTimeout;
 
+        initialSpawnPosition = spawnPoint != null ? spawnPoint.position : transform.position;
+        initialRotation = transform.rotation;
+        
+        if (playerVisual != null)
+        {
+            initialVisualScale = playerVisual.localScale;
+            initialVisualPosition = playerVisual.localPosition;
+        }
+
         // Inicializar munición
         currentAmmo = maxAmmo;
         currentMagazines = maxMagazines - 1;
@@ -209,6 +231,18 @@ public class TPMovement_Controller : MonoBehaviour
         
         reloadAction.action.Enable();
         reloadAction.action.performed += OnReloadPerformed;
+
+         if (respawnAction != null)
+        {
+            respawnAction.action.Enable();
+            respawnAction.action.performed += OnRespawnPerformed;
+        }
+        
+        if (restartSceneAction != null)
+        {
+            restartSceneAction.action.Enable();
+            restartSceneAction.action.performed += OnRestartScenePerformed;
+        }
     }
 
     private void OnDisable()
@@ -232,10 +266,23 @@ public class TPMovement_Controller : MonoBehaviour
         
         reloadAction.action.performed -= OnReloadPerformed;
         reloadAction.action.Disable();
+
+         if (respawnAction != null)
+        {
+            respawnAction.action.performed -= OnRespawnPerformed;
+            respawnAction.action.Disable();
+        }
+        
+        if (restartSceneAction != null)
+        {
+            restartSceneAction.action.performed -= OnRestartScenePerformed;
+            restartSceneAction.action.Disable();
+        }
     }
 
     private void Update()
     {
+        if (isDead) return;
         HandleStamina();
         GroundedCheck();
         JumpAndGravity();
@@ -798,6 +845,8 @@ private Vector3 GetPreciseShootDirection()
 
     public void TakeDamage(float damage)
     {
+        if (isDead) return; // ✅ No recibir daño si ya está muerto
+
         currentHealth -= damage;
         currentHealth = Mathf.Max(currentHealth, 0f);
         UpdateHealthUI();
@@ -808,9 +857,21 @@ private Vector3 GetPreciseShootDirection()
         }
     }
 
-    private void Die()
+     private void Die()
     {
-        Debug.Log("¡Jugador muerto!");
+        if (isDead) return;
+
+        isDead = true;
+        Debug.Log("💀 Jugador muerto!");
+
+        // ✅ DESACTIVAR todas las habilidades y modelo
+        SetPlayerActive(false);
+
+        // ✅ MOSTRAR MENSAJE DE MUERTE
+        ShowDeathMessage();
+
+        // ✅ OPCIONAL: Sonido de muerte
+        // if (deathSound != null) AudioSource.PlayClipAtPoint(deathSound, transform.position);
     }
 
     public void Heal(float healAmount)
@@ -937,5 +998,132 @@ private Vector3 GetPreciseShootDirection()
     {
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(groundCheck.position, groundDistance);
+    }
+
+     private void OnRespawnPerformed(InputAction.CallbackContext context)
+    {
+        if (isDead)
+        {
+            RespawnPlayer();
+        }
+    }
+
+    private void OnRestartScenePerformed(InputAction.CallbackContext context)
+    {
+        RestartScene();
+    }
+
+
+    private void SetPlayerActive(bool active)
+    {
+        // Desactivar modelo visual
+        if (playerVisual != null)
+        {
+            playerVisual.gameObject.SetActive(active);
+        }
+
+        // Desactivar collider
+        if (controller != null)
+        {
+            controller.enabled = active;
+        }
+
+        // Desactivar disparo
+        SetCanShoot(active);
+
+        // Detener movimiento
+        if (!active)
+        {
+            currentVelocity = Vector3.zero;
+            verticalVelocity = Vector3.zero;
+            movementInput = Vector2.zero;
+        }
+
+        // Ocultar/mostrar UI según estado
+        UpdateDeathUI(!active);
+    }
+
+    public void RespawnPlayer()
+{
+    if (!isDead) return;
+
+    Debug.Log("🔄 Reapareciendo jugador...");
+
+    // ✅ RESTAURAR todos los valores
+    currentHealth = maxHealth;
+    currentStamina = maxStamina;
+    currentAmmo = maxAmmo;
+    currentMagazines = maxMagazines - 1;
+    isDead = false;
+
+    // ✅ RESTAURAR posición y rotación
+    if (spawnPoint != null)
+    {
+        transform.position = spawnPoint.position;
+        transform.rotation = spawnPoint.rotation;
+    }
+    else
+    {
+        transform.position = initialSpawnPosition;
+        transform.rotation = initialRotation;
+    }
+
+    // ✅ RESTAURAR modelo visual
+    if (playerVisual != null)
+    {
+        playerVisual.localScale = initialVisualScale;
+        playerVisual.localPosition = initialVisualPosition;
+    }
+
+    // ✅ REACTIVAR todas las habilidades
+    SetPlayerActive(true);
+
+    // ✅ RESTAURAR UI
+    UpdateHealthUI();
+    UpdateStaminaUI();
+    UpdateAmmoUI();
+    HideDeathMessage(); // ✅ NOMBRE CORREGIDO
+
+    Debug.Log("✅ Jugador reaparecido - Valores restaurados");
+}
+
+    private void RestartScene()
+    {
+        Debug.Log("🔄 Reiniciando escena...");
+        
+        // Obtener la escena actual y recargarla
+        Scene currentScene = SceneManager.GetActiveScene();
+        SceneManager.LoadScene(currentScene.name);
+    }
+
+    private void ShowDeathMessage()
+    {
+        // Puedes implementar UI de muerte aquí
+        Debug.Log("💀 PRESIONA F1 PARA REAPARECER");
+        
+        // Ejemplo con UI Text (descomenta y configura si tienes UI)
+        /*
+        if (deathMessageText != null)
+        {
+            deathMessageText.text = "¡HAS MUERTO!\nPresiona F1 para reaparecer";
+            deathMessageText.gameObject.SetActive(true);
+        }
+        */
+    }
+    private void HideDeathMessage()
+    {
+        // Ocultar UI de muerte
+        /*
+        if (deathMessageText != null)
+        {
+            deathMessageText.gameObject.SetActive(false);
+        }
+        */
+    }
+
+     private void UpdateDeathUI(bool isDead)
+    {
+        // Puedes agregar efectos de UI aquí cuando el jugador muere
+        // Por ejemplo: oscurecer la pantalla, mostrar crosshair rojo, etc.
     }
 }
