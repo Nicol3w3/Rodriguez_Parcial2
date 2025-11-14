@@ -74,7 +74,7 @@ public class AIController : MonoBehaviour
             obstacleAvoidance = GetComponent<ObstacleAvoidance>();
             if (obstacleAvoidance == null)
             {
-                Debug.LogWarning($"ObstacleAvoidance no encontrado en {enemyConfig.enemyName}");
+//                Debug.LogWarning($"ObstacleAvoidance no encontrado en {enemyConfig.enemyName}");
             }
         }
         
@@ -87,7 +87,7 @@ public class AIController : MonoBehaviour
             obstacleAvoidance = GetComponent<ObstacleAvoidance>();
             if (obstacleAvoidance == null)
             {
-                Debug.LogWarning($"ObstacleAvoidance no encontrado en {enemyConfig.enemyName}");
+//                Debug.LogWarning($"ObstacleAvoidance no encontrado en {enemyConfig.enemyName}");
             }
         }
      if (usePathfinding)
@@ -475,7 +475,11 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
 
     public virtual void TakeDamage(float damageAmount)
     {
-        if (enemyConfig.isInvulnerable || currentState == AIState.Dead) return;
+      //  if (enemyConfig.isInvulnerable || currentState == AIState.Dead) return;
+      //   {
+      //  Debug.Log($"🛡️ {enemyConfig.enemyName} es invulnerable o ya está muerto");
+       // return;
+        //}
 
         // Guardar el estado actual antes del daño (excepto si ya está en Damaged)
         if (currentState != AIState.Damaged)
@@ -484,6 +488,8 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         }
 
         currentHealth -= damageAmount;
+        Debug.Log($"💥 {enemyConfig.enemyName} recibió {damageAmount} de daño");
+
         OnHealthChanged?.Invoke(currentHealth / enemyConfig.maxHealth);
         
         // Cambiar al estado Damaged

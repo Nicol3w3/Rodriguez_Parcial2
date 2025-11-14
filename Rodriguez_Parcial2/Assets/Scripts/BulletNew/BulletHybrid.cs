@@ -199,9 +199,9 @@ public class HybridBullet : BulletBase
     {
         if (!isActive) return;
 
-        Debug.Log($"💥 COLISIÓN DETECTADA con: {collision.gameObject.name}");
-        Debug.Log($"   - Tag: {collision.gameObject.tag}");
-        Debug.Log($"   - Layer: {LayerMask.LayerToName(collision.gameObject.layer)}");
+        //Debug.Log($"💥 COLISIÓN DETECTADA con: {collision.gameObject.name}");
+        //Debug.Log($"   - Tag: {collision.gameObject.tag}");
+        //Debug.Log($"   - Layer: {LayerMask.LayerToName(collision.gameObject.layer)}");
         
         ContactPoint contact = collision.GetContact(0);
         

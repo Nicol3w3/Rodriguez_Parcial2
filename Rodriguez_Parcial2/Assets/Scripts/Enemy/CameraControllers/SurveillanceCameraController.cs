@@ -379,6 +379,7 @@ private void SetupRigidbody()
 
     public override void TakeDamage(float damageAmount)
     {
+        Debug.Log($"📷 Cámara recibiendo {damageAmount} de daño");
         if (isDestroyed || !cameraConfig.canBeDestroyed) return;
 
         base.TakeDamage(damageAmount);
