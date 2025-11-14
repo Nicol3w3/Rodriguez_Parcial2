@@ -65,6 +65,16 @@ public class FieldOfView : MonoBehaviour
             return;
         }
 
+    Vector3 detectionPos = transform.position;
+    Vector3 detectionDir = transform.forward;
+    
+    CameraFieldOfViewAdapter adapter = GetComponent<CameraFieldOfViewAdapter>();
+    if (adapter != null)
+    {
+        detectionPos = adapter.GetCameraPosition();    // ✅ CORREGIDO
+        detectionDir = adapter.GetCameraForward(); 
+    }
+
         // VERIFICACIÓN MEJORADA - Buscar específicamente al player
         bool playerInRange = false;
         bool playerInAngle = false;

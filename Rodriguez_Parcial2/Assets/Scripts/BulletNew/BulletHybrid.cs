@@ -51,7 +51,7 @@ public class HybridBullet : BulletBase
         
         rb.useGravity = false;
         rb.isKinematic = false;
-        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
 
         // Configurar LineRenderer para el tracer
@@ -198,6 +198,10 @@ public class HybridBullet : BulletBase
     private void OnCollisionEnter(Collision collision)
     {
         if (!isActive) return;
+
+        Debug.Log($"💥 COLISIÓN DETECTADA con: {collision.gameObject.name}");
+        Debug.Log($"   - Tag: {collision.gameObject.tag}");
+        Debug.Log($"   - Layer: {LayerMask.LayerToName(collision.gameObject.layer)}");
         
         ContactPoint contact = collision.GetContact(0);
         
@@ -290,30 +294,6 @@ public class HybridBullet : BulletBase
             Gizmos.DrawLine(transform.position, hitPoint);
         }
     }
-void OnTriggerEnter(Collider other)
-{
-    // ✅ SOLUCIÓN CON TAGS (más simple)
-    if (this.CompareTag("EnemyBullet") && other.CompareTag("Enemy"))
-        return;
-        
-    if (this.CompareTag("PlayerBullet") && other.CompareTag("Player")) 
-        return;
 
-    // ✅ SOLUCIÓN CON LAYERS (más eficiente)
-    if (gameObject.layer == LayerMask.NameToLayer("EnemyBullets") && 
-        other.gameObject.layer == LayerMask.NameToLayer("Enemy"))
-        return;
-
-    // Tu lógica normal de colisión...
-    if (((1 << other.gameObject.layer) & hitLayers) != 0)
-    {
-        TPMovement_Controller player = other.GetComponentInParent<TPMovement_Controller>();
-        if (player != null)
-        {
-            player.TakeDamage(damage);
-        }
-        Destroy(gameObject);
-    }
-}
 }
 

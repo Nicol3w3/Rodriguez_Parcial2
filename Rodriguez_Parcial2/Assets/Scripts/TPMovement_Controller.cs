@@ -3,6 +3,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
 using UnityEngine.SceneManagement;
+using System.Collections;
 
 public class TPMovement_Controller : MonoBehaviour
 {
@@ -246,39 +247,23 @@ public class TPMovement_Controller : MonoBehaviour
     }
 
     private void OnDisable()
+{
+    // ✅ SOLO LIMPIAR SI EL OBJETO Y LAS REFERENCIAS AÚN EXISTEN
+    if (this == null) return;
+    
+    try
     {
-        shootAction.performed -= _ => TryToShoot();
-        
-        movementAction.action.performed -= OnMovementPerformed;
-        movementAction.action.canceled -= OnMovementCanceled;
-        movementAction.action.Disable();
-        
-        jumpAction.action.performed -= OnJumpPerformed;
-        jumpAction.action.canceled -= OnJumpCanceled;
-        jumpAction.action.Disable();
-
-        sprintAction.action.performed -= OnSprintPerformed;
-        sprintAction.action.canceled -= OnSprintCanceled;
-        sprintAction.action.Disable();
-
-        crouchAction.action.performed -= OnCrouchPerformed;
-        crouchAction.action.Disable();
-        
-        reloadAction.action.performed -= OnReloadPerformed;
-        reloadAction.action.Disable();
-
-         if (respawnAction != null)
+        // Solo limpiar el callback del disparo que es el más problemático
+        if (shootAction != null)
         {
-            respawnAction.action.performed -= OnRespawnPerformed;
-            respawnAction.action.Disable();
-        }
-        
-        if (restartSceneAction != null)
-        {
-            restartSceneAction.action.performed -= OnRestartScenePerformed;
-            restartSceneAction.action.Disable();
+            shootAction.performed -= _ => TryToShoot();
         }
     }
+    catch (System.Exception e)
+    {
+        Debug.LogWarning($"⚠️ Error en OnDisable: {e.Message}");
+    }
+}
 
     private void Update()
     {
@@ -649,7 +634,7 @@ public class TPMovement_Controller : MonoBehaviour
             enemyFOV = enemy.GetComponent<FieldOfView>();
             if (enemyFOV == null)
             {
-                Debug.LogWarning("No se encontró componente FieldOfView en el enemigo");
+//                Debug.LogWarning("No se encontró componente FieldOfView en el enemigo");
             }
         }
     }
@@ -703,31 +688,34 @@ public class TPMovement_Controller : MonoBehaviour
 
     // SHOOTING METHODS
     private void TryToShoot()
+{
+    // ✅ VALIDAR QUE EL OBJETO NO ESTÉ DESTRUIDO
+    if (this == null || !isActiveAndEnabled) return;
+    
+    if (Time.time >= nextFireTime && canShoot && !isReloading)
     {
-        if (Time.time >= nextFireTime && canShoot && !isReloading)
+        if (currentAmmo > 0)
         {
-            if (currentAmmo > 0)
+            ShootGun();
+            currentAmmo--;
+            UpdateAmmoUI();
+            nextFireTime = Time.time + fireRate;
+            
+            if (currentAmmo <= 0)
             {
-                ShootGun();
-                currentAmmo--;
-                UpdateAmmoUI(); // ✅ ACTUALIZAR UI DESPUÉS DE DISPARAR
-                nextFireTime = Time.time + fireRate;
-                
-                if (currentAmmo <= 0)
-                {
-                //    Debug.Log("⚠️ Recámara vacía - Presiona R para recargar");
-                }
+                // Debug.Log("⚠️ Recámara vacía - Presiona R para recargar");
             }
-            else
+        }
+        else
+        {
+            // Debug.Log("❌ Sin munición - Presiona R para recargar");
+            if (currentMagazines > 0 && !isReloading)
             {
-               // Debug.Log("❌ Sin munición - Presiona R para recargar");
-                if (currentMagazines > 0 && !isReloading)
-                {
-                    StartReload();
-                }
+                StartReload();
             }
         }
     }
+}
 
   private void ShootGun()
 {
@@ -1009,9 +997,78 @@ private Vector3 GetPreciseShootDirection()
     }
 
     private void OnRestartScenePerformed(InputAction.CallbackContext context)
+{
+    // ✅ SOLUCIÓN ALTERNATIVA: DESACTIVAR INPUT TEMPORALMENTE
+    var playerInput = GetComponent<PlayerInput>();
+    if (playerInput != null)
     {
-        RestartScene();
+        playerInput.enabled = false;
     }
+    
+    // ✅ LIMPIAR CALLBACKS ESPECÍFICOS DEL DISPARO
+    if (shootAction != null)
+    {
+        shootAction.performed -= _ => TryToShoot();
+        shootAction = null;
+    }
+    
+    RestartScene();
+}
+
+    private void CleanupBeforeSceneRestart()
+{
+    Debug.Log("🧹 Limpiando referencias antes de reiniciar escena...");
+    
+    // ✅ DESREGISTRAR TODOS LOS CALLBACKS MANUALMENTE
+    if (shootAction != null)
+    {
+        shootAction.performed -= _ => TryToShoot();
+    }
+    
+    if (movementAction != null && movementAction.action != null)
+    {
+        movementAction.action.performed -= OnMovementPerformed;
+        movementAction.action.canceled -= OnMovementCanceled;
+    }
+    
+    if (jumpAction != null && jumpAction.action != null)
+    {
+        jumpAction.action.performed -= OnJumpPerformed;
+        jumpAction.action.canceled -= OnJumpCanceled;
+    }
+    
+    if (sprintAction != null && sprintAction.action != null)
+    {
+        sprintAction.action.performed -= OnSprintPerformed;
+        sprintAction.action.canceled -= OnSprintCanceled;
+    }
+    
+    if (crouchAction != null && crouchAction.action != null)
+    {
+        crouchAction.action.performed -= OnCrouchPerformed;
+    }
+    
+    if (reloadAction != null && reloadAction.action != null)
+    {
+        reloadAction.action.performed -= OnReloadPerformed;
+    }
+    
+    if (respawnAction != null && respawnAction.action != null)
+    {
+        respawnAction.action.performed -= OnRespawnPerformed;
+    }
+    
+    if (restartSceneAction != null && restartSceneAction.action != null)
+    {
+        restartSceneAction.action.performed -= OnRestartScenePerformed;
+    }
+    
+    // ✅ CANCELAR INVOKES PENDIENTES
+    CancelInvoke();
+    
+    // ✅ DETENER CORRUTINAS
+    StopAllCoroutines();
+}
 
 
     private void SetPlayerActive(bool active)
@@ -1087,14 +1144,24 @@ private Vector3 GetPreciseShootDirection()
     Debug.Log("✅ Jugador reaparecido - Valores restaurados");
 }
 
-    private void RestartScene()
-    {
-        Debug.Log("🔄 Reiniciando escena...");
-        
-        // Obtener la escena actual y recargarla
-        Scene currentScene = SceneManager.GetActiveScene();
-        SceneManager.LoadScene(currentScene.name);
-    }
+   private void RestartScene()
+{
+    Debug.Log("🔄 Reiniciando escena...");
+    
+    // Obtener la escena actual y recargarla
+    Scene currentScene = SceneManager.GetActiveScene();
+    SceneManager.LoadScene(currentScene.name);
+}
+
+private IEnumerator RestartSceneCoroutine()
+{
+    // Esperar un frame para que se ejecute la limpieza
+    yield return null;
+    
+    // Obtener la escena actual y recargarla
+    Scene currentScene = SceneManager.GetActiveScene();
+    SceneManager.LoadScene(currentScene.name);
+}
 
     private void ShowDeathMessage()
     {

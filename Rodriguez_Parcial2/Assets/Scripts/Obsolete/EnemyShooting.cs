@@ -92,7 +92,7 @@ public class EnemyShootingSystem : MonoBehaviour
         float distanceToPlayer = Vector3.Distance(transform.position, player.transform.position);
         if (distanceToPlayer > shootRange) 
         {
-            if (enableDebug) Debug.Log($"📏 Fuera de rango: {distanceToPlayer} > {shootRange}");
+//            if (enableDebug) Debug.Log($"📏 Fuera de rango: {distanceToPlayer} > {shootRange}");
             return;
         }
         
@@ -141,10 +141,10 @@ private bool HasLineOfSightToPlayer()
     
     if (enableDebug)
     {
-        Debug.Log($"🎯 Disparando desde: {shootPosition}");
-        Debug.Log($"🎯 Hacia jugador: {playerPosition}");
-        Debug.Log($"🎯 Dirección original: {directionToPlayer}");
-        Debug.Log($"🎯 Dirección corregida: {shootDirection}");
+//        Debug.Log($"🎯 Disparando desde: {shootPosition}");
+  //      Debug.Log($"🎯 Hacia jugador: {playerPosition}");
+    //    Debug.Log($"🎯 Dirección original: {directionToPlayer}");
+      //  Debug.Log($"🎯 Dirección corregida: {shootDirection}");
     }
     
     // Verificar que tenemos prefab
