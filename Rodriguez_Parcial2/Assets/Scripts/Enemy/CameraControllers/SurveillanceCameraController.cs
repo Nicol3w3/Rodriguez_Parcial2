@@ -172,7 +172,7 @@ private void SetupRigidbody()
             Debug.LogWarning("⚠️ No se encontró PivotPoint, usando GameObject principal");
         }
 
-        Debug.Log($"✅ PivotPoint: {pivotPoint.name}, DetectionOrigin: {detectionOrigin.name}");
+//        Debug.Log($"✅ PivotPoint: {pivotPoint.name}, DetectionOrigin: {detectionOrigin.name}");
     }
 
    private void SetupVisuals()
@@ -289,75 +289,121 @@ private void SetupRigidbody()
         }
     }
 
-    protected override void HandleDetection()
-{
-    if (isDestroyed) return;
-    
-    base.HandleDetection();
-    
-    // ✅ USAR cameraFOV EN LUGAR DE fov
-    if (cameraFOV != null && cameraFOV.canSeePlayer)
+  protected override void HandleDetection()
     {
-        if (cameraState != CameraState.Alert)
+        if (isDestroyed) return;
+        
+        // ✅ LLAMAR AL BASE PRIMERO para que actualice la detección
+        base.HandleDetection();
+        
+        if (cameraFOV != null && cameraFOV.canSeePlayer)
         {
-            SetCameraState(CameraState.Alert);
-            PlaySound(cameraConfig.cameraDetectionSound);
+            if (cameraState != CameraState.Alert)
+            {
+                SetCameraState(CameraState.Alert);
+                PlaySound(cameraConfig.cameraDetectionSound);
+                
+                // ✅ FORZAR cambio de estado en el AIController también
+                ChangeState(AIState.Alert);
+                
+                // Comunicar alerta a todos los soldiers
+                if (fov != null && fov.playerRef != null)
+                {
+                    AlertOtherEnemies(fov.playerRef.transform.position);
+                }
+                else if (cameraFOV.playerRef != null)
+                {
+                    AlertOtherEnemies(cameraFOV.playerRef.transform.position);
+                }
+            }
         }
-    }
-    else if (isChasing && cameraState == CameraState.Alert)
-    {
-        SetCameraState(CameraState.Searching);
-    }
-    else if (!isChasing && cameraState != CameraState.Scanning)
-    {
-        SetCameraState(CameraState.Scanning);
+        else if (cameraState == CameraState.Alert && cameraState != CameraState.Destroyed)
+        {
+            // ✅ MODIFICADO: La cámara vuelve a Scanning cuando pierde de vista al jugador
+            SetCameraState(CameraState.Scanning);
+            ChangeState(AIState.Idle); // ✅ También cambiar el estado del AIController
+        }
+
+        if (cameraState == CameraState.Alert && cameraConfig.canAlertOtherEnemies)
+        {
+            if (Time.time - lastAlertTime >= cameraConfig.alertCooldown)
+            {
+                AlertNearbyEnemies();
+                lastAlertTime = Time.time;
+            }
+        }
     }
 
-    if (cameraState == CameraState.Alert && cameraConfig.canAlertOtherEnemies)
+     protected override void AlertBehavior()
     {
-        if (Time.time - lastAlertTime >= cameraConfig.alertCooldown)
+        // Las cámaras en alerta siguen al jugador con la rotación
+        if (fov != null && fov.playerRef != null && cameraFOV != null && cameraFOV.canSeePlayer)
         {
-            AlertNearbyEnemies();
-            lastAlertTime = Time.time;
+            // Rotar hacia el jugador
+            if (pivotPoint != null)
+            {
+                RotateTransformTowards(pivotPoint, fov.playerRef.transform.position);
+            }
         }
     }
-}
+
+     protected override void HandleStateTimers()
+    {
+        // Las cámaras no tienen timers de alerta por daño
+        // Solo manejan timers de scanning
+    }
+
+    protected override void HandleStateBehavior()
+    {
+        switch (currentState)
+        {
+            case AIState.Alert:
+                AlertBehavior(); // ✅ Usar el comportamiento específico de cámara
+                break;
+            case AIState.Idle:
+                IdleBehavior(); // Scanning normal
+                break;
+            default:
+                base.HandleStateBehavior();
+                break;
+        }
+    }
 
     protected override void IdleBehavior()
+{
+    if (cameraState != CameraState.Scanning || isDestroyed) return;
+
+    if (isPaused)
     {
-        if (cameraState != CameraState.Scanning || isDestroyed) return;
-
-        if (isPaused)
+        pauseTimer += Time.deltaTime;
+        if (pauseTimer >= cameraConfig.scanPauseTime)
         {
-            pauseTimer += Time.deltaTime;
-            if (pauseTimer >= cameraConfig.scanPauseTime)
-            {
-                isPaused = false;
-                pauseTimer = 0f;
-                rotationDirection *= -1f;
-            }
-            return;
+            isPaused = false;
+            pauseTimer = 0f;
+            rotationDirection *= -1f;
         }
-
-        // ✅ ROTAR EL PIVOT POINT, NO EL GAMEOBJECT PRINCIPAL
-        currentRotation += rotationDirection * enemyConfig.rotationSpeed * Time.deltaTime;
-        
-        if (Mathf.Abs(currentRotation) >= cameraConfig.cameraRotationAngle / 2f)
-        {
-            isPaused = true;
-            currentRotation = Mathf.Clamp(currentRotation, -cameraConfig.cameraRotationAngle / 2f, cameraConfig.cameraRotationAngle / 2f);
-        }
-
-        // ✅ APLICAR ROTACIÓN AL PIVOT POINT
-        if (pivotPoint != null)
-        {
-            pivotPoint.rotation = initialRotation * Quaternion.Euler(0, currentRotation, 0);
-        }
-        else
-        {
-            transform.rotation = initialRotation * Quaternion.Euler(0, currentRotation, 0);
-        }
+        return;
     }
+
+    // ✅ ROTAR EL PIVOT POINT, NO EL GAMEOBJECT PRINCIPAL
+    currentRotation += rotationDirection * enemyConfig.rotationSpeed * Time.deltaTime;
+    
+    if (Mathf.Abs(currentRotation) >= cameraConfig.cameraRotationAngle / 2f)
+    {
+        isPaused = true;
+        currentRotation = Mathf.Clamp(currentRotation, -cameraConfig.cameraRotationAngle / 2f, cameraConfig.cameraRotationAngle / 2f);
+    }
+
+    // ✅ APLICAR ROTACIÓN AL PIVOT POINT
+    if (pivotPoint != null)
+    {
+        pivotPoint.rotation = initialRotation * Quaternion.Euler(0, currentRotation, 0);
+    }
+    else
+    {
+        transform.rotation = initialRotation * Quaternion.Euler(0, currentRotation, 0);
+    }
+}
 
     private void SetCameraState(CameraState newState)
     {
@@ -382,17 +428,31 @@ private void SetupRigidbody()
         Debug.Log($"📷 Cámara recibiendo {damageAmount} de daño");
         if (isDestroyed || !cameraConfig.canBeDestroyed) return;
 
-        base.TakeDamage(damageAmount);
+        // ✅ MODIFICADO: Las cámaras NO cambian de estado por recibir daño
+        // Solo procesan el daño a la salud
+        currentHealth -= damageAmount;
 
+        OnHealthChanged?.Invoke(currentHealth / enemyConfig.maxHealth);
+
+        // Efecto visual de daño (opcional)
         if (cameraRenderer != null)
         {
             StartCoroutine(DamageFlash());
         }
 
+        // Sonido de daño
+        if (enemyConfig.hitSound != null)
+        {
+            PlaySound(enemyConfig.hitSound);
+        }
+
         if (currentHealth <= 0)
         {
             SetCameraState(CameraState.Destroyed);
+            ChangeState(AIState.Dead); // ✅ Solo cambia a Dead cuando se destruye
         }
+        
+        UpdateStateDisplays();
     }
 
     private IEnumerator DamageFlash()
@@ -412,7 +472,7 @@ private void SetupRigidbody()
     {
         isDestroyed = true;
         
-        Debug.Log("📷 Cámara destruida!");
+//        Debug.Log("📷 Cámara destruida!");
 
         if (spotLight != null)
         {
@@ -463,6 +523,18 @@ private void SetupRigidbody()
             cameraCollider.enabled = false;
 
         ChangeState(AIState.Dead);
+    }
+
+     protected override void ChangeState(AIState newState)
+    {
+        // ✅ PREVENIR que las cámaras entren en estado Chasing
+        if (newState == AIState.Chasing)
+        {
+            Debug.LogWarning("⚠️ Las cámaras no pueden entrar en estado Chasing");
+            return;
+        }
+        
+        base.ChangeState(newState);
     }
 
     private void AlertNearbyEnemies()
@@ -519,7 +591,7 @@ private void SetupRigidbody()
             }
             else
             {
-                RotateTowards(fov.playerRef.transform.position);
+                RotateTowardsTarget(fov.playerRef.transform.position); // ✅ CAMBIADO
             }
         }
     }
@@ -583,15 +655,15 @@ private void SetupRigidbody()
     }
 }
 
-protected override void RotateTowards(Vector3 targetPosition)
-{
-    if (pivotPoint != null)
+protected override void RotateTowardsTarget(Vector3 targetPosition)
     {
-        RotateTransformTowards(pivotPoint, targetPosition);
+        if (pivotPoint != null)
+        {
+            RotateTransformTowards(pivotPoint, targetPosition);
+        }
+        else
+        {
+            base.RotateTowardsTarget(targetPosition);
+        }
     }
-    else
-    {
-        base.RotateTowards(targetPosition);
-    }
-}
 }

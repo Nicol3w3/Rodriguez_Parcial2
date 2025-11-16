@@ -89,17 +89,17 @@ public class EnemyStateDisplay : MonoBehaviour
     }
 
     Color GetStateColor(string state)
+{
+    switch (state.ToLower())
     {
-        switch (state.ToLower())
-        {
-            case "idle": return idleColor;
-            case "patrolling": return patrollingColor;
-            case "chasing": return chasingColor;
-            case "damaged": return damagedColor;
-            case "dead": return deadColor;
-            default: return Color.white;
-        }
+        case "idle": return idleColor;
+        case "patrolling": return patrollingColor;
+        case "chasing": return chasingColor;
+        case "alert": return damagedColor; // Usar el mismo color que damaged anteriormente
+        case "dead": return deadColor;
+        default: return Color.white;
     }
+}
 
     // Métodos para ajustar fácilmente desde el inspector
     [ContextMenu("Ajustar Altura +0.5")]

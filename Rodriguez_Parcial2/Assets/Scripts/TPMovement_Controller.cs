@@ -133,6 +133,7 @@ public class TPMovement_Controller : MonoBehaviour
 
     // Referencias al enemigo
     private FieldOfView enemyFOV;
+    private CameraFieldOfView[] cameraFOVs;
     private bool isBeingWatchedByEnemy = false;
 
     // Damage Detection
@@ -486,7 +487,7 @@ public class TPMovement_Controller : MonoBehaviour
         if (reloadIndicator != null)
             reloadIndicator.SetActive(true);
             
-        Debug.Log("🔄 Recargando...");
+//        Debug.Log("🔄 Recargando...");
         
         Invoke(nameof(FinishReload), 1f);
     }
@@ -637,20 +638,19 @@ public class TPMovement_Controller : MonoBehaviour
 //                Debug.LogWarning("No se encontró componente FieldOfView en el enemigo");
             }
         }
+
+        cameraFOVs = FindObjectsByType<CameraFieldOfView>(FindObjectsSortMode.None);
     }
 
-    private void CheckIfBeingWatched()
-    {
-        if (enemyFOV != null)
-        {
-            isBeingWatchedByEnemy = enemyFOV.canSeePlayer;
-        }
-        else
-        {
-            if (enemyFOV == null) FindEnemyFOV();
-            isBeingWatchedByEnemy = false;
-        }
-    }
+   private void CheckIfBeingWatched()
+{
+    // Buscar cualquier FieldOfView que pueda ver al jugador
+    FieldOfView soldierFOV = FindAnyObjectByType<FieldOfView>();
+    CameraFieldOfView cameraFOV = FindAnyObjectByType<CameraFieldOfView>();
+    
+    isBeingWatchedByEnemy = (soldierFOV != null && soldierFOV.canSeePlayer) || 
+                           (cameraFOV != null && cameraFOV.canSeePlayer);
+}
 
     // INPUT METHODS
     private void OnMovementPerformed(InputAction.CallbackContext context)
@@ -850,7 +850,7 @@ private Vector3 GetPreciseShootDirection()
         if (isDead) return;
 
         isDead = true;
-        Debug.Log("💀 Jugador muerto!");
+//        Debug.Log("💀 Jugador muerto!");
 
         // ✅ DESACTIVAR todas las habilidades y modelo
         SetPlayerActive(false);
@@ -1146,7 +1146,7 @@ private Vector3 GetPreciseShootDirection()
 
    private void RestartScene()
 {
-    Debug.Log("🔄 Reiniciando escena...");
+//    Debug.Log("🔄 Reiniciando escena...");
     
     // Obtener la escena actual y recargarla
     Scene currentScene = SceneManager.GetActiveScene();
@@ -1166,7 +1166,7 @@ private IEnumerator RestartSceneCoroutine()
     private void ShowDeathMessage()
     {
         // Puedes implementar UI de muerte aquí
-        Debug.Log("💀 PRESIONA F1 PARA REAPARECER");
+        Debug.Log("💀 PRESIONA F1 PARA REAPARECER O F2 PARA REINICIAR LA ESCENA");
         
         // Ejemplo con UI Text (descomenta y configura si tienes UI)
         /*

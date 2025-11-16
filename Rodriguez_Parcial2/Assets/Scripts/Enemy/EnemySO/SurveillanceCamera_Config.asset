@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6dc93fa8fe255ca49940ba0b2776030a, type: 3}
   m_Name: SurveillanceCamera_Config
   m_EditorClassIdentifier: 
-  enemyName: 
+  enemyName: Camera
   enemyType: 0
   maxHealth: 100
   isInvulnerable: 0
@@ -24,16 +24,16 @@ MonoBehaviour:
   detectionAngle: 90
   targetMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 64
   obstructionMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 256
   damageToPlayer: 5
   canDealDamage: 1
-  canPatrol: 1
-  canChase: 1
-  usePersistentChase: 1
-  useObstacleAvoidance: 1
+  canPatrol: 0
+  canChase: 0
+  usePersistentChase: 0
+  useObstacleAvoidance: 0
   chaseTimeout: 0
   enemyMaterial: {fileID: 0}
   deathEffect: {fileID: 0}

@@ -1,11 +1,10 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class SoldierAIController : AIController
 {
     private SoldierConfigData soldierConfig;
-    private int currentWaypointIndex = 0;
     private float patrolTimer = 0f;
-    private EnemyShootingSystem shootingSystem;
 
     private float nextFireTime = 0f;
     private bool canShoot = true;
@@ -29,6 +28,27 @@ public class SoldierAIController : AIController
         
         // Inicializar sistema de disparo
         InitializeShootingSystem();
+        InitializePatrolPoints();
+    }
+
+    protected override void InitializePatrolPoints()
+    {
+        if (soldierConfig != null && soldierConfig.canPatrol && soldierConfig.patrolWaypoints != null)
+        {
+            List<Vector3> points = new List<Vector3>();
+            foreach (Transform waypoint in soldierConfig.patrolWaypoints)
+            {
+                if (waypoint != null)
+                    points.Add(waypoint.position);
+            }
+            
+            SetPatrolPoints(points);
+            
+            if (hasPatrolRoute)
+            {
+                ChangeState(AIState.Patrolling);
+            }
+        }
     }
 
    private void InitializeShootingSystem()
@@ -55,9 +75,22 @@ public class SoldierAIController : AIController
     {
         base.InitializeFromConfig();
         
-        if (soldierConfig != null && soldierConfig.canPatrol)
+        if (soldierConfig != null && soldierConfig.canPatrol && hasPatrolRoute)
         {
             currentState = AIState.Patrolling;
+        }
+    }
+
+   
+
+    protected override void AlertBehavior()
+    {
+        base.AlertBehavior();
+        
+        // Soldiers pueden disparar incluso en estado de alerta si ven al jugador
+        if (fov != null && fov.canSeePlayer && soldierConfig.canShoot)
+        {
+            shootingSystem?.TryShootAtPlayer();
         }
     }
 
@@ -88,75 +121,48 @@ public class SoldierAIController : AIController
 
     protected override void PatrolBehavior()
     {
-        if (soldierConfig == null || !soldierConfig.canPatrol || 
-            soldierConfig.patrolWaypoints == null || soldierConfig.patrolWaypoints.Length == 0)
+        if (!hasPatrolRoute || patrolPoints.Count == 0)
         {
-            currentState = AIState.Idle;
+            ChangeState(AIState.Idle);
             return;
         }
 
-        Transform targetWaypoint = soldierConfig.patrolWaypoints[currentWaypointIndex];
+        Vector3 targetPosition = patrolPoints[currentPatrolIndex];
         
-        if (targetWaypoint == null) return;
-
-        Vector3 direction = (targetWaypoint.position - transform.position).normalized;
-        direction.y = 0; // Solo movimiento horizontal
+        Vector3 direction = (targetPosition - transform.position).normalized;
+        direction.y = 0;
         
-        RotateTowards(targetWaypoint.position);
+        RotateTowardsTarget(targetPosition);
         
         if (enemyConfig.canMove && isGrounded)
         {
-            // ✅ USAR velocity en lugar de MovePosition para mejor física
             Vector3 targetVelocity = direction * enemyConfig.movementSpeed;
             rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
         }
 
         // Cambiar waypoint cuando se acerca
-        if (Vector3.Distance(transform.position, targetWaypoint.position) < 0.5f)
+        if (Vector3.Distance(transform.position, targetPosition) < 0.5f)
         {
             patrolTimer += Time.deltaTime;
             
             if (patrolTimer >= soldierConfig.patrolWaitTime)
             {
-                currentWaypointIndex = (currentWaypointIndex + 1) % soldierConfig.patrolWaypoints.Length;
+                currentPatrolIndex = (currentPatrolIndex + 1) % patrolPoints.Count;
                 patrolTimer = 0f;
+                lastPatrolPosition = targetPosition;
             }
         }
     }
 
-    protected override void ChaseBehavior()
+     protected override void ChaseBehavior()
     {
-        if (!enemyConfig.canMove || !isGrounded) return;
-
-        if (fov != null && fov.playerRef != null && fov.canSeePlayer)
+        base.ChaseBehavior();
+        
+        // Soldiers disparan mientras persiguen
+        if (fov != null && fov.canSeePlayer && soldierConfig.canShoot)
         {
-            lastKnownPlayerPosition = fov.playerRef.transform.position;
+            shootingSystem?.TryShootAtPlayer();
         }
-
-        Vector3 directionToPlayer = (lastKnownPlayerPosition - transform.position).normalized;
-        directionToPlayer.y = 0;
-        
-        Vector3 finalDirection = directionToPlayer;
-        
-        if (enemyConfig.useObstacleAvoidance && obstacleAvoidance != null)
-        {
-            finalDirection = GetSoldierAvoidanceDirection(directionToPlayer, lastKnownPlayerPosition);
-        }
-        
-        RotateTowards(lastKnownPlayerPosition);
-        
-        float currentSpeed = enemyConfig.chaseSpeed;
-        
-        Vector3 targetVelocity = finalDirection * currentSpeed;
-        Vector3 currentVelocity = rb.linearVelocity;
-        Vector3 newVelocity = Vector3.Lerp(currentVelocity, targetVelocity, Time.fixedDeltaTime * 5f);
-        newVelocity.y = rb.linearVelocity.y;
-        
-        rb.linearVelocity = newVelocity;
-        
-        Debug.DrawLine(transform.position, lastKnownPlayerPosition, 
-                      fov != null && fov.canSeePlayer ? Color.red : Color.yellow);
-        Debug.DrawRay(transform.position, finalDirection * 2f, Color.green);
     }
 
 // ✅ SISTEMA MEJORADO PARA SOLDADOS
@@ -201,7 +207,8 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
 
     protected override AIState GetDefaultState()
     {
-        return soldierConfig != null && soldierConfig.canPatrol ? AIState.Patrolling : AIState.Idle;
+        return (soldierConfig != null && soldierConfig.canPatrol && hasPatrolRoute) ? 
+               AIState.Patrolling : AIState.Idle;
     }
 
     public void SetLastKnownPosition(Vector3 position)
@@ -355,18 +362,21 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
         }
     }
 
-    public override void TakeDamage(float damageAmount)
+   public override void TakeDamage(float damageAmount)
     {
+        // Llamar al base primero para manejar la salud y efectos
         base.TakeDamage(damageAmount);
         
-        // ✅ FORZAR MODO CHASE SI NO ESTÁ MUERTO
-        if (currentState != AIState.Dead && currentState != AIState.Damaged && !isChasing)
+        // Comportamiento adicional específico para soldiers
+        if (currentState != AIState.Dead && currentState != AIState.Alert)
         {
-            StartChasing();
+            // Soldiers siempre entran en alerta cuando reciben daño
+            ChangeState(AIState.Alert);
+            isFirstDamage = true;
             
             if (enableStateDebug)
             {
-                Debug.Log($"💥 {enemyConfig.enemyName} recibió daño - Activando modo Chase");
+                Debug.Log($"💥 {enemyConfig.enemyName} recibió daño - Activando modo Alert");
             }
         }
     }

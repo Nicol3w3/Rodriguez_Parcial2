@@ -73,8 +73,8 @@ public class EnemyShootingSystem : MonoBehaviour
                 break;
         }
         
-        if (player != null && enableDebug)
-            Debug.Log($"✅ Jugador encontrado: {player.name}");
+        //if (player != null && enableDebug)
+//            Debug.Log($"✅ Jugador encontrado: {player.name}");
     }
 
    public void TryShootAtPlayer()
@@ -103,7 +103,7 @@ public class EnemyShootingSystem : MonoBehaviour
             return;
         }
         
-        if (enableDebug) Debug.Log("🔫 DISPARANDO PROYECTIL!");
+//        if (enableDebug) Debug.Log("🔫 DISPARANDO PROYECTIL!");
         Shoot();
         nextFireTime = Time.time + fireRate;
     }
@@ -164,7 +164,7 @@ private bool HasLineOfSightToPlayer()
         projectile.damage = bulletDamage;
         projectile.speed = projectileSpeed;
         
-        if (enableDebug) Debug.Log("✅ Proyectil creado y lanzado");
+//        if (enableDebug) Debug.Log("✅ Proyectil creado y lanzado");
     }
     else
     {

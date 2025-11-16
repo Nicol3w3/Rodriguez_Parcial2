@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public class AIController : MonoBehaviour
 {
@@ -42,10 +43,10 @@ public class AIController : MonoBehaviour
     private float lastPathRecalculationTime;
     private Vector3 currentPathTarget;
     // Estados protegidos para herencia
-    protected enum AIState { Patrolling, Chasing, Dead, Idle, Damaged }
+     protected enum AIState { Patrolling, Chasing, Dead, Idle, Alert }
     protected AIState currentState = AIState.Idle;
     protected AIState previousState = AIState.Idle;
-    protected AIState stateBeforeDamage; // Para recordar el estado antes del daño
+    protected AIState stateBeforeAlert; // Para recordar el estado antes del daño
 
     
     
@@ -56,9 +57,20 @@ public class AIController : MonoBehaviour
     protected ObstacleAvoidance obstacleAvoidance;
     protected Coroutine damageRecoveryCoroutine;
 
+    protected float alertTimer = 0f;
+    protected float searchTimer = 0f;
+    protected Vector3 alertPosition;
+    protected bool isFirstDamage = true;
+
+    protected List<Vector3> patrolPoints = new List<Vector3>();
+    protected int currentPatrolIndex = 0;
+    protected bool hasPatrolRoute = false;
+    protected Vector3 lastPatrolPosition;
+
     // Eventos
     public System.Action<float> OnHealthChanged;
     public System.Action OnDeath;
+    public System.Action<Vector3> OnAlert;
 
     // Debug de estados
     [Header("State Debug")]
@@ -78,6 +90,9 @@ public class AIController : MonoBehaviour
             }
         }
         
+
+        lastPatrolPosition = transform.position;
+
         UpdateStateDisplays();
         
         SetupDamageCollider();
@@ -108,6 +123,25 @@ public class AIController : MonoBehaviour
         previousState = currentState;
         currentState = newState;
         
+        // Resetear timers según el estado
+        switch (currentState)
+        {
+            case AIState.Alert:
+                alertTimer = 0f;
+                searchTimer = 0f;
+                if (previousState != AIState.Alert)
+                {
+                    stateBeforeAlert = previousState;
+                }
+                break;
+            case AIState.Patrolling:
+                currentPatrolIndex = 0;
+                break;
+            case AIState.Chasing:
+                chaseTimer = 0f;
+                break;
+        }
+        
         UpdateStateDisplays();
         
         if (enableStateDebug)
@@ -117,7 +151,7 @@ public class AIController : MonoBehaviour
     }
 
     // Actualizar displays para inspector
-    private void UpdateStateDisplays()
+    protected virtual void UpdateStateDisplays()
     {
         currentStateDisplay = currentState.ToString();
         previousStateDisplay = previousState.ToString();
@@ -191,17 +225,45 @@ public class AIController : MonoBehaviour
     {
         UpdateStateDisplays(); // Mantener actualizado en tiempo real
         HandleShooting();
+        HandleStateTimers();
 
     }
 
     protected virtual void FixedUpdate()
     {
-        if (currentState == AIState.Dead || currentState == AIState.Damaged) return;
+        if (currentState == AIState.Dead) return;
         
         CheckGrounded();
         HandleDetection();
         HandleStateBehavior();
         HandleChasePersistence();
+    }
+
+     protected virtual void HandleStateTimers()
+    {
+        switch (currentState)
+        {
+            case AIState.Alert:
+                alertTimer += Time.deltaTime;
+                searchTimer += Time.deltaTime;
+                
+                // Después de 3 segundos en alerta (por daño), pasar a Chase
+                if (alertTimer >= 3f && isFirstDamage)
+                {
+                    ChangeState(AIState.Chasing);
+                }
+                
+                // Después de 10 segundos buscando, volver a patrullar
+                if (searchTimer >= 10f)
+                {
+                    ReturnToPatrol();
+                }
+                break;
+                
+            case AIState.Chasing:
+                chaseTimer += Time.deltaTime;
+                break;
+        }
     }
 
     protected virtual AIState GetDefaultState()
@@ -247,19 +309,50 @@ public class AIController : MonoBehaviour
         {
             if (fov.canSeePlayer)
             {
-                if (!isChasing && enemyConfig.canChase && currentState != AIState.Damaged)
+                if (!isChasing && enemyConfig.canChase && currentState != AIState.Alert)
                 {
                     StartChasing();
                 }
+                
                 lastKnownPlayerPosition = fov.playerRef.transform.position;
+                
+                // Si ve al jugador, comunicar alerta a otros enemigos
+                if (currentState == AIState.Chasing || currentState == AIState.Alert)
+                {
+                    AlertOtherEnemies(lastKnownPlayerPosition);
+                }
+                
                 chaseTimer = 0f;
+                searchTimer = 0f; // Resetear timer de búsqueda
             }
-            // ✅ PERSECUCIÓN PERSISTENTE: Seguir al jugador aunque no lo vea
-            else if (isChasing && enemyConfig.usePersistentChase)
+        }
+    }
+
+    protected virtual void AlertOtherEnemies(Vector3 playerPosition)
+    {
+        OnAlert?.Invoke(playerPosition);
+        
+        // También buscar otros soldiers en la escena y alertarlos
+        AIController[] allEnemies = FindObjectsByType<AIController>(FindObjectsSortMode.None);
+        foreach (AIController enemy in allEnemies)
+        {
+            if (enemy != this && enemy is SoldierAIController && !enemy.IsDead())
             {
-                // Actualizar posición continuamente mientras esté persiguiendo
-                lastKnownPlayerPosition = fov.playerRef.transform.position;
+                enemy.ReceiveAlert(playerPosition);
             }
+        }
+    }
+
+    public virtual void ReceiveAlert(Vector3 alertPosition)
+    {
+        if (currentState == AIState.Dead || currentState == AIState.Chasing) return;
+        
+        this.alertPosition = alertPosition;
+        
+        if (currentState != AIState.Alert)
+        {
+            ChangeState(AIState.Alert);
+            searchTimer = 0f;
         }
     }
 
@@ -309,10 +402,76 @@ public class AIController : MonoBehaviour
             case AIState.Idle:
                 IdleBehavior();
                 break;
-            case AIState.Damaged:
-                DamagedBehavior();
+            case AIState.Alert:
+                AlertBehavior();
                 break;
         }
+    }
+
+    protected virtual void AlertBehavior()
+    {
+        if (!enemyConfig.canMove || !isGrounded) return;
+
+        // Moverse hacia la posición de alerta
+        Vector3 moveDirection = GetMovementDirectionToAlert();
+        RotateTowardsTarget(alertPosition);
+        
+        float currentSpeed = enemyConfig.movementSpeed * 0.7f; // Velocidad reducida en alerta
+        
+        Vector3 targetVelocity = moveDirection * currentSpeed;
+        rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
+        
+        // Debug
+        Debug.DrawLine(transform.position, alertPosition, Color.cyan);
+        
+        // Si llega a la posición de alerta, buscar alrededor
+        if (Vector3.Distance(transform.position, alertPosition) < 1f)
+        {
+            // Comportamiento de búsqueda (puede girar o moverse aleatoriamente)
+            SearchBehavior();
+        }
+    }
+
+    protected virtual Vector3 GetMovementDirectionToAlert()
+    {
+        Vector3 direction = (alertPosition - transform.position).normalized;
+        
+        if (obstacleAvoidance != null)
+        {
+            Vector3 avoidanceDir = obstacleAvoidance.GetAvoidanceDirection(alertPosition);
+            direction = (direction + avoidanceDir * avoidanceWeight).normalized;
+        }
+        
+        return direction;
+    }
+
+    protected virtual void SearchBehavior()
+    {
+        // Comportamiento básico de búsqueda - puede ser overrideado
+        // Por ejemplo, rotar lentamente o moverse en pequeños círculos
+        transform.Rotate(0, 30f * Time.deltaTime, 0);
+    }
+    protected virtual void ReturnToPatrol()
+    {
+        if (hasPatrolRoute)
+        {
+            ChangeState(AIState.Patrolling);
+        }
+        else
+        {
+            ChangeState(AIState.Idle);
+        }
+        
+        if (enableStateDebug)
+        {
+            Debug.Log($"🔄 {enemyConfig.enemyName} volviendo a patrullar después de búsqueda");
+        }
+    }
+
+    // NUEVO: Inicializar puntos de patrulla (para soldiers)
+    protected virtual void InitializePatrolPoints()
+    {
+        // Será implementado en SoldierAIController
     }
 
    protected virtual void ChaseBehavior()
@@ -327,7 +486,7 @@ public class AIController : MonoBehaviour
 
     Vector3 moveDirection = GetMovementDirection();
     
-    RotateTowards(lastKnownPlayerPosition);
+    RotateTowardsTarget(lastKnownPlayerPosition);
     
     float currentSpeed = enemyConfig.chaseSpeed;
     
@@ -432,18 +591,8 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         // Comportamiento cuando está inactivo
     }
 
-    protected virtual void DamagedBehavior()
-    {
-        // Frenar en seco al enemigo
-        if (rb != null)
-        {
-            rb.linearVelocity = Vector3.zero;
-        }
-        
-        // No hacer nada más - la corutina se encargará de volver al estado anterior
-    }
 
-    protected virtual void RotateTowards(Vector3 targetPosition)
+     protected virtual void RotateTowardsTarget(Vector3 targetPosition)
     {
         Vector3 direction = (targetPosition - transform.position).normalized;
         direction.y = 0;
@@ -473,18 +622,14 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         }
     }
 
-    public virtual void TakeDamage(float damageAmount)
+     public virtual void TakeDamage(float damageAmount)
     {
-      //  if (enemyConfig.isInvulnerable || currentState == AIState.Dead) return;
-      //   {
-      //  Debug.Log($"🛡️ {enemyConfig.enemyName} es invulnerable o ya está muerto");
-       // return;
-        //}
+        if (currentState == AIState.Dead) return;
 
-        // Guardar el estado actual antes del daño (excepto si ya está en Damaged)
-        if (currentState != AIState.Damaged)
+        // Guardar el estado actual antes de la alerta
+        if (currentState != AIState.Alert)
         {
-            stateBeforeDamage = currentState;
+            stateBeforeAlert = currentState;
         }
 
         currentHealth -= damageAmount;
@@ -492,17 +637,12 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
 
         OnHealthChanged?.Invoke(currentHealth / enemyConfig.maxHealth);
         
-        // Cambiar al estado Damaged
-        if (currentState != AIState.Damaged)
+        // Cambiar al estado Alert en lugar de Damaged
+        if (currentState != AIState.Alert)
         {
-            ChangeState(AIState.Damaged);
-            
-            // Iniciar la recuperación del estado Damaged
-            if (damageRecoveryCoroutine != null)
-            {
-                StopCoroutine(damageRecoveryCoroutine);
-            }
-            damageRecoveryCoroutine = StartCoroutine(RecoverFromDamage());
+            ChangeState(AIState.Alert);
+            alertPosition = lastKnownPlayerPosition;
+            isFirstDamage = true;
         }
         
         // Efecto de golpe
@@ -524,29 +664,6 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         UpdateStateDisplays();
     }
 
-    protected virtual IEnumerator RecoverFromDamage()
-    {
-        if (enableStateDebug)
-        {
-//            Debug.Log($"💥 {enemyConfig.enemyName} en estado Damaged por 1 segundo");
-        }
-        
-        // Esperar 1 segundo en estado Damaged
-        yield return new WaitForSeconds(1f);
-        
-        // Volver al estado anterior (a menos que esté muerto)
-        if (currentState != AIState.Dead)
-        {
-            if (enableStateDebug)
-            {
-//                Debug.Log($"🔄 {enemyConfig.enemyName} recuperándose del daño, volviendo a: {stateBeforeDamage}");
-            }
-            
-            ChangeState(stateBeforeDamage);
-        }
-        
-        damageRecoveryCoroutine = null;
-    }
 
     protected virtual void Die()
     {
@@ -585,18 +702,15 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
 
     public virtual void Revive()
     {
-        // Detener la corutina de daño si está activa
-        if (damageRecoveryCoroutine != null)
-        {
-            StopCoroutine(damageRecoveryCoroutine);
-            damageRecoveryCoroutine = null;
-        }
-
-        ChangeState(GetDefaultState()); // Usar ChangeState en lugar de asignación directa
+        ChangeState(GetDefaultState());
         currentHealth = enemyConfig.maxHealth;
         isChasing = false;
         lastKnownPlayerPosition = Vector3.zero;
-        stateBeforeDamage = GetDefaultState();
+        alertPosition = Vector3.zero;
+        stateBeforeAlert = GetDefaultState();
+        isFirstDamage = true;
+        alertTimer = 0f;
+        searchTimer = 0f;
         
         if (fov != null)
         {
@@ -606,6 +720,13 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         SetEnemyVisible(true);
         OnHealthChanged?.Invoke(1f);
         UpdateStateDisplays();
+    }
+
+    public virtual void SetPatrolPoints(List<Vector3> points)
+    {
+        patrolPoints = new List<Vector3>(points);
+        hasPatrolRoute = patrolPoints.Count > 0;
+        lastPatrolPosition = transform.position;
     }
 
     protected virtual void SetEnemyVisible(bool visible)
@@ -631,9 +752,9 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         }
     }
 
-    private void OnTriggerEnter(Collider other)
+     private void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player") && enemyConfig.canDealDamage && currentState != AIState.Damaged)
+        if (other.CompareTag("Player") && enemyConfig.canDealDamage && currentState != AIState.Alert) // ✅ CAMBIADO: de Damaged a Alert
         {
             TPMovement_Controller player = other.GetComponent<TPMovement_Controller>();
             if (player != null)
@@ -672,23 +793,17 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         ChangeState(AIState.Chasing);
     }
 
-    [ContextMenu("Debug - Change to Damaged")]
-    private void DebugChangeToDamaged()
+    [ContextMenu("Debug - Change to Alert")] // ✅ CAMBIADO: de Damaged a Alert
+    private void DebugChangeToAlert()
     {
-        stateBeforeDamage = currentState;
-        ChangeState(AIState.Damaged);
-        
-        if (damageRecoveryCoroutine != null)
-        {
-            StopCoroutine(damageRecoveryCoroutine);
-        }
-        damageRecoveryCoroutine = StartCoroutine(RecoverFromDamage());
+        stateBeforeAlert = currentState;
+        ChangeState(AIState.Alert);
     }
 
     [ContextMenu("Debug - Print Current State")]
     private void DebugPrintCurrentState()
     {
-        Debug.Log($"🔍 {enemyConfig.enemyName} - Estado actual: {currentState}, Estado anterior: {previousState}, Estado antes del daño: {stateBeforeDamage}, Persiguiendo: {isChasing}");
+        Debug.Log($"🔍 {enemyConfig.enemyName} - Estado actual: {currentState}, Estado anterior: {previousState}, Estado antes de alerta: {stateBeforeAlert}, Persiguiendo: {isChasing}");
     }
     public string GetCurrentState()
     {
@@ -734,4 +849,3 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         shootingSystem?.TryShootAtPlayer();
     }
 }
-
