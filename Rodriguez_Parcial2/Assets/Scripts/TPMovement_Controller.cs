@@ -249,15 +249,21 @@ public class TPMovement_Controller : MonoBehaviour
 
     private void OnDisable()
 {
-    // ✅ SOLO LIMPIAR SI EL OBJETO Y LAS REFERENCIAS AÚN EXISTEN
+    // ✅ SOLO LIMPIAR SI EL OBJETO AÚN EXISTE
     if (this == null) return;
     
     try
     {
-        // Solo limpiar el callback del disparo que es el más problemático
+        // Limpiar callback del disparo
         if (shootAction != null)
         {
             shootAction.performed -= _ => TryToShoot();
+        }
+        
+        // Limpiar callback de reinicio de escena específicamente
+        if (restartSceneAction != null && restartSceneAction.action != null)
+        {
+            restartSceneAction.action.performed -= OnRestartScenePerformed;
         }
     }
     catch (System.Exception e)
@@ -996,78 +1002,105 @@ private Vector3 GetPreciseShootDirection()
         }
     }
 
-    private void OnRestartScenePerformed(InputAction.CallbackContext context)
+   private void OnRestartScenePerformed(InputAction.CallbackContext context)
 {
-    // ✅ SOLUCIÓN ALTERNATIVA: DESACTIVAR INPUT TEMPORALMENTE
+    if (!context.performed) return;
+    
+    // ✅ DESREGISTRAR CALLBACKS ANTES de reiniciar
+    CleanupAllInputCallbacks();
+    
+    // ✅ DESHABILITAR el PlayerInput completamente
     var playerInput = GetComponent<PlayerInput>();
     if (playerInput != null)
     {
         playerInput.enabled = false;
     }
     
-    // ✅ LIMPIAR CALLBACKS ESPECÍFICOS DEL DISPARO
-    if (shootAction != null)
-    {
-        shootAction.performed -= _ => TryToShoot();
-        shootAction = null;
-    }
-    
-    RestartScene();
+    // ✅ USAR CORRUTINA para dar tiempo a la limpieza
+    StartCoroutine(RestartSceneWithCleanup());
 }
 
-    private void CleanupBeforeSceneRestart()
+private IEnumerator RestartSceneWithCleanup()
 {
-    Debug.Log("🧹 Limpiando referencias antes de reiniciar escena...");
+    // Esperar un frame para que se complete la limpieza
+    yield return null;
     
-    // ✅ DESREGISTRAR TODOS LOS CALLBACKS MANUALMENTE
-    if (shootAction != null)
-    {
-        shootAction.performed -= _ => TryToShoot();
-    }
-    
-    if (movementAction != null && movementAction.action != null)
-    {
-        movementAction.action.performed -= OnMovementPerformed;
-        movementAction.action.canceled -= OnMovementCanceled;
-    }
-    
-    if (jumpAction != null && jumpAction.action != null)
-    {
-        jumpAction.action.performed -= OnJumpPerformed;
-        jumpAction.action.canceled -= OnJumpCanceled;
-    }
-    
-    if (sprintAction != null && sprintAction.action != null)
-    {
-        sprintAction.action.performed -= OnSprintPerformed;
-        sprintAction.action.canceled -= OnSprintCanceled;
-    }
-    
-    if (crouchAction != null && crouchAction.action != null)
-    {
-        crouchAction.action.performed -= OnCrouchPerformed;
-    }
-    
-    if (reloadAction != null && reloadAction.action != null)
-    {
-        reloadAction.action.performed -= OnReloadPerformed;
-    }
-    
-    if (respawnAction != null && respawnAction.action != null)
-    {
-        respawnAction.action.performed -= OnRespawnPerformed;
-    }
-    
-    if (restartSceneAction != null && restartSceneAction.action != null)
-    {
-        restartSceneAction.action.performed -= OnRestartScenePerformed;
-    }
-    
-    // ✅ CANCELAR INVOKES PENDIENTES
+    // ✅ LIMPIAR INVOKES Y CORRUTINAS
     CancelInvoke();
-    
-    // ✅ DETENER CORRUTINAS
     StopAllCoroutines();
+    
+    // Reiniciar escena
+    Scene currentScene = SceneManager.GetActiveScene();
+    SceneManager.LoadScene(currentScene.name);
+}
+
+    private void CleanupAllInputCallbacks()
+{
+//    Debug.Log("🧹 Limpiando todos los callbacks de input...");
+    
+    try
+    {
+        // ✅ DESREGISTRAR CALLBACK DEL DISPARO
+        if (shootAction != null)
+        {
+            shootAction.performed -= _ => TryToShoot();
+            shootAction = null;
+        }
+        
+        // ✅ DESREGISTRAR TODOS LOS CALLBACKS DE INPUT ACTIONS
+        if (movementAction != null && movementAction.action != null)
+        {
+            movementAction.action.performed -= OnMovementPerformed;
+            movementAction.action.canceled -= OnMovementCanceled;
+        }
+        
+        if (jumpAction != null && jumpAction.action != null)
+        {
+            jumpAction.action.performed -= OnJumpPerformed;
+            jumpAction.action.canceled -= OnJumpCanceled;
+        }
+        
+        if (sprintAction != null && sprintAction.action != null)
+        {
+            sprintAction.action.performed -= OnSprintPerformed;
+            sprintAction.action.canceled -= OnSprintCanceled;
+        }
+        
+        if (crouchAction != null && crouchAction.action != null)
+        {
+            crouchAction.action.performed -= OnCrouchPerformed;
+        }
+        
+        if (reloadAction != null && reloadAction.action != null)
+        {
+            reloadAction.action.performed -= OnReloadPerformed;
+        }
+        
+        if (respawnAction != null && respawnAction.action != null)
+        {
+            respawnAction.action.performed -= OnRespawnPerformed;
+        }
+        
+        if (restartSceneAction != null && restartSceneAction.action != null)
+        {
+            restartSceneAction.action.performed -= OnRestartScenePerformed;
+        }
+        
+        // ✅ DESHABILITAR TODAS LAS ACCIONES
+        movementAction?.action?.Disable();
+        jumpAction?.action?.Disable();
+        sprintAction?.action?.Disable();
+        crouchAction?.action?.Disable();
+        reloadAction?.action?.Disable();
+        respawnAction?.action?.Disable();
+        restartSceneAction?.action?.Disable();
+        
+//        Debug.Log("✅ Callbacks limpiados correctamente");
+    }
+    catch (System.Exception e)
+    {
+        Debug.LogWarning($"⚠️ Error durante limpieza: {e.Message}");
+    }
 }
 
 
@@ -1193,4 +1226,16 @@ private IEnumerator RestartSceneCoroutine()
         // Puedes agregar efectos de UI aquí cuando el jugador muere
         // Por ejemplo: oscurecer la pantalla, mostrar crosshair rojo, etc.
     }
+
+    private void OnDestroy()
+{
+    // ✅ LIMPIAR CALLBACKS CUANDO EL OBJETO SE DESTRUYE
+    CleanupAllInputCallbacks();
+    
+    // ✅ CANCELAR TODAS LAS CORRUTINAS E INVOKES
+    CancelInvoke();
+    StopAllCoroutines();
+    
+//    Debug.Log("🧹 TPMovement_Controller destruido - Callbacks limpiados");
+}
 }

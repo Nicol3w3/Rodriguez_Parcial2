@@ -9,6 +9,12 @@ public class SoldierAIController : AIController
     private float nextFireTime = 0f;
     private bool canShoot = true;
 
+    private Vector3 initialPosition;
+    private Quaternion initialRotation;
+    private AIState initialState;
+    private Vector3[] initialPatrolPoints;
+    private int initialPatrolIndex = 0;
+
     [Header("Shooting References - Por Instancia")]
     public Transform shootPoint;
 
@@ -24,11 +30,25 @@ public class SoldierAIController : AIController
             return;
         }
 
+        // ✅ GUARDAR POSICIÓN INICIAL ANTES del base.Start()
+        SaveInitialTransform();
+
         base.Start();
         
-        // Inicializar sistema de disparo
         InitializeShootingSystem();
         InitializePatrolPoints();
+    }
+
+     protected override void SaveInitialTransform()
+    {
+        initialPosition = transform.position;
+        initialRotation = transform.rotation;
+        initialState = GetDefaultState();
+        
+        if (enableStateDebug)
+        {
+            Debug.Log($"💾 Soldier guardó posición inicial: {initialPosition}");
+        }
     }
 
     protected override void InitializePatrolPoints()
@@ -83,16 +103,34 @@ public class SoldierAIController : AIController
 
    
 
-    protected override void AlertBehavior()
+   protected override void AlertBehavior()
+{
+    if (!enemyConfig.canMove || !isGrounded) return;
+
+    // Soldiers son más agresivos en alerta
+    if (fov != null && fov.playerRef != null)
     {
-        base.AlertBehavior();
-        
-        // Soldiers pueden disparar incluso en estado de alerta si ven al jugador
-        if (fov != null && fov.canSeePlayer && soldierConfig.canShoot)
-        {
-            shootingSystem?.TryShootAtPlayer();
-        }
+        lastKnownPlayerPosition = fov.playerRef.transform.position;
     }
+
+    Vector3 moveDirection = GetMovementDirectionToPlayer();
+    RotateTowardsTarget(lastKnownPlayerPosition);
+    
+    // Soldiers se mueven a velocidad casi normal en alerta
+    float currentSpeed = enemyConfig.movementSpeed * 0.9f;
+    
+    Vector3 targetVelocity = moveDirection * currentSpeed;
+    rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
+    
+    // Debug visual
+    Debug.DrawLine(transform.position, lastKnownPlayerPosition, Color.magenta);
+    
+    // Soldiers pueden disparar incluso en estado de alerta si ven al jugador
+    if (fov != null && fov.canSeePlayer && soldierConfig != null && soldierConfig.canShoot)
+    {
+        shootingSystem?.TryShootAtPlayer();
+    }
+}
 
     protected override void Update()
 {
@@ -363,21 +401,39 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
     }
 
    public override void TakeDamage(float damageAmount)
+{
+    // ✅ NUEVO: Si ya está en Chasing, usar la lógica base que NO cambia estado
+    if (currentState == AIState.Chasing)
     {
-        // Llamar al base primero para manejar la salud y efectos
         base.TakeDamage(damageAmount);
+        return;
+    }
+
+    // ✅ COMPORTAMIENTO ORIGINAL solo si NO está en Chasing
+    // Llamar al base primero para manejar la salud y efectos
+    base.TakeDamage(damageAmount);
+    
+    // Comportamiento adicional específico para soldiers
+    if (currentState != AIState.Dead && currentState != AIState.Alert)
+    {
+        // Soldiers siempre entran en alerta cuando reciben daño (solo primera vez)
+        ChangeState(AIState.Alert);
+        isFirstDamage = true;
         
-        // Comportamiento adicional específico para soldiers
-        if (currentState != AIState.Dead && currentState != AIState.Alert)
+        if (enableStateDebug)
         {
-            // Soldiers siempre entran en alerta cuando reciben daño
-            ChangeState(AIState.Alert);
-            isFirstDamage = true;
-            
-            if (enableStateDebug)
-            {
-                Debug.Log($"💥 {enemyConfig.enemyName} recibió daño - Activando modo Alert");
-            }
+            Debug.Log($"💥 {enemyConfig.enemyName} recibió daño - Activando modo Alert");
         }
     }
+}
+protected override void DamagedBehavior()
+{
+    base.DamagedBehavior();
+    
+    // Comportamiento específico para soldiers durante el estado Damaged
+    // Por ejemplo: no pueden disparar, movilidad muy reducida
+    
+    // Soldiers no disparan mientras están dañados
+    // (el sistema de disparo ya está desactivado en este estado)
+}
 }

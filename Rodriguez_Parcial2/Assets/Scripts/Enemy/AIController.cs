@@ -43,13 +43,16 @@ public class AIController : MonoBehaviour
     private float lastPathRecalculationTime;
     private Vector3 currentPathTarget;
     // Estados protegidos para herencia
-     protected enum AIState { Patrolling, Chasing, Dead, Idle, Alert }
+    protected enum AIState { Patrolling, Chasing, Dead, Idle, Alert, Damaged }
     protected AIState currentState = AIState.Idle;
     protected AIState previousState = AIState.Idle;
     protected AIState stateBeforeAlert; // Para recordar el estado antes del daño
 
-    
-    
+    [Header("Respawn Settings")]
+    protected Vector3 initialPosition;
+    protected Quaternion initialRotation;
+    protected AIState initialState;
+
     protected float currentHealth;
     public bool isChasing { get; protected set; } = false;
     protected Vector3 lastKnownPlayerPosition;
@@ -61,6 +64,7 @@ public class AIController : MonoBehaviour
     protected float searchTimer = 0f;
     protected Vector3 alertPosition;
     protected bool isFirstDamage = true;
+    protected float damageTimer = 0f;
 
     protected List<Vector3> patrolPoints = new List<Vector3>();
     protected int currentPatrolIndex = 0;
@@ -78,9 +82,15 @@ public class AIController : MonoBehaviour
 
     protected virtual void Start()
     {
+        // ✅ GUARDAR POSICIÓN INICIAL
+        initialPosition = transform.position;
+        initialRotation = transform.rotation;
+        initialState = GetDefaultState();
+
         InitializeFromConfig();
         InitializeShootingSystem();
         RegisterWithManager();
+        
         if (enemyConfig.useObstacleAvoidance)
         {
             obstacleAvoidance = GetComponent<ObstacleAvoidance>();
@@ -90,11 +100,8 @@ public class AIController : MonoBehaviour
             }
         }
         
-
         lastPatrolPosition = transform.position;
-
         UpdateStateDisplays();
-        
         SetupDamageCollider();
         
         if (enemyConfig.useObstacleAvoidance)
@@ -105,50 +112,67 @@ public class AIController : MonoBehaviour
 //                Debug.LogWarning($"ObstacleAvoidance no encontrado en {enemyConfig.enemyName}");
             }
         }
-     if (usePathfinding)
-    {
-        pathfinding = GetComponent<DynamicPathfinding>();
-        if (pathfinding == null)
+        
+        if (usePathfinding)
         {
-            pathfinding = gameObject.AddComponent<DynamicPathfinding>();
+            pathfinding = GetComponent<DynamicPathfinding>();
+            if (pathfinding == null)
+            {
+                pathfinding = gameObject.AddComponent<DynamicPathfinding>();
+            }
         }
     }
-}
+
+ protected virtual void SaveInitialTransform()
+    {
+        // Este método será overrideado por las clases hijas
+        // No guardamos nada aquí en el base para evitar conflictos
+    }
 
     // MÉTODO CLAVE: Cambiar estado con debug
-    protected virtual void ChangeState(AIState newState)
-    {
-        if (currentState == newState) return;
+   protected virtual void ChangeState(AIState newState)
+{
+    if (currentState == newState) return;
 
-        previousState = currentState;
-        currentState = newState;
-        
-        // Resetear timers según el estado
-        switch (currentState)
-        {
-            case AIState.Alert:
-                alertTimer = 0f;
-                searchTimer = 0f;
-                if (previousState != AIState.Alert)
-                {
-                    stateBeforeAlert = previousState;
-                }
-                break;
-            case AIState.Patrolling:
-                currentPatrolIndex = 0;
-                break;
-            case AIState.Chasing:
-                chaseTimer = 0f;
-                break;
-        }
-        
-        UpdateStateDisplays();
-        
-        if (enableStateDebug)
-        {
-            Debug.Log($" {enemyConfig.enemyName} {currentState}");
-        }
+    previousState = currentState;
+    currentState = newState;
+    
+    // Resetear timers según el estado
+    switch (currentState)
+    {
+        case AIState.Damaged:
+            damageTimer = 0f;
+            if (previousState != AIState.Damaged && previousState != AIState.Alert)
+            {
+                stateBeforeAlert = previousState;
+            }
+            break;
+            
+        case AIState.Alert:
+            alertTimer = 0f;
+            searchTimer = 0f;
+            if (previousState != AIState.Alert && previousState != AIState.Damaged)
+            {
+                stateBeforeAlert = previousState;
+            }
+            break;
+            
+        case AIState.Patrolling:
+            currentPatrolIndex = 0;
+            break;
+            
+        case AIState.Chasing:
+            chaseTimer = 0f;
+            break;
     }
+    
+    UpdateStateDisplays();
+    
+    if (enableStateDebug)
+    {
+        Debug.Log($" {enemyConfig.enemyName} {previousState} -> {currentState}");
+    }
+}
 
     // Actualizar displays para inspector
     protected virtual void UpdateStateDisplays()
@@ -239,33 +263,57 @@ public class AIController : MonoBehaviour
         HandleChasePersistence();
     }
 
-     protected virtual void HandleStateTimers()
+    protected virtual void HandleStateTimers()
+{
+    switch (currentState)
     {
-        switch (currentState)
-        {
-            case AIState.Alert:
-                alertTimer += Time.deltaTime;
-                searchTimer += Time.deltaTime;
+        case AIState.Damaged:
+            damageTimer += Time.deltaTime;
+            
+            // Después de 3 segundos en Damaged, pasar a Alert
+            if (damageTimer >= 3f)
+            {
+                ChangeState(AIState.Alert);
+                alertTimer = 0f;
+                searchTimer = 0f;
                 
-                // Después de 3 segundos en alerta (por daño), pasar a Chase
-                if (alertTimer >= 3f && isFirstDamage)
+                // ✅ ACTUALIZAR: Guardar posición del jugador al entrar en Alert
+                if (fov != null && fov.playerRef != null)
                 {
-                    ChangeState(AIState.Chasing);
+                    lastKnownPlayerPosition = fov.playerRef.transform.position;
+                    alertPosition = lastKnownPlayerPosition; // Para compatibilidad
                 }
-                
-                // Después de 10 segundos buscando, volver a patrullar
-                if (searchTimer >= 10f)
-                {
-                    ReturnToPatrol();
-                }
-                break;
-                
-            case AIState.Chasing:
-                chaseTimer += Time.deltaTime;
-                break;
-        }
+            }
+            break;
+            
+        case AIState.Alert:
+            alertTimer += Time.deltaTime;
+            searchTimer += Time.deltaTime;
+            
+            // ✅ ACTUALIZAR: Actualizar posición del jugador constantemente
+            if (fov != null && fov.playerRef != null)
+            {
+                lastKnownPlayerPosition = fov.playerRef.transform.position;
+            }
+            
+            // ✅ MODIFICADO: Solo pasar a Chase si puede ver al jugador
+            if (fov != null && fov.canSeePlayer && currentState != AIState.Chasing)
+            {
+                ChangeState(AIState.Chasing);
+            }
+            
+            // ✅ MODIFICADO: Solo volver si NO hay propagación de alerta
+            if (searchTimer >= 10f && !enemyConfig.usePersistentChase)
+            {
+                ReturnToPreviousState();
+            }
+            break;
+            
+        case AIState.Chasing:
+            chaseTimer += Time.deltaTime;
+            break;
     }
-
+}
     protected virtual AIState GetDefaultState()
     {
         return AIState.Idle;
@@ -328,33 +376,57 @@ public class AIController : MonoBehaviour
         }
     }
 
-    protected virtual void AlertOtherEnemies(Vector3 playerPosition)
+   protected virtual void AlertOtherEnemies(Vector3 playerPosition)
+{
+    OnAlert?.Invoke(playerPosition);
+    
+    // ✅ CORREGIDO: Buscar TODOS los AIController en la escena y filtrar soldiers
+    AIController[] allEnemies = FindObjectsByType<AIController>(FindObjectsSortMode.None);
+    
+    if (enableStateDebug && allEnemies.Length > 0)
     {
-        OnAlert?.Invoke(playerPosition);
-        
-        // También buscar otros soldiers en la escena y alertarlos
-        AIController[] allEnemies = FindObjectsByType<AIController>(FindObjectsSortMode.None);
-        foreach (AIController enemy in allEnemies)
+//        Debug.Log($"🚨 {enemyConfig.enemyName} alertando a {allEnemies.Length} enemigos en la escena");
+    }
+    
+    foreach (AIController enemy in allEnemies)
+    {
+        // ✅ No alertarse a sí mismo, solo soldiers vivos que no sean cámaras
+        if (enemy != this && !enemy.IsDead() && IsSoldier(enemy))
         {
-            if (enemy != this && enemy is SoldierAIController && !enemy.IsDead())
+            enemy.ReceiveAlert(playerPosition);
+            
+            if (enableStateDebug)
             {
-                enemy.ReceiveAlert(playerPosition);
+//                Debug.Log($"📢 Alerta enviada a: {enemy.GetEnemyName()} (Distancia: {Vector3.Distance(transform.position, enemy.transform.position):F1}m)");
             }
         }
     }
+}
 
-    public virtual void ReceiveAlert(Vector3 alertPosition)
+private bool IsSoldier(AIController enemy)
+{
+    // Los soldiers tienen SoldierConfigData, las cámaras tienen SurveillanceCameraConfigData
+    return enemy.enemyConfig is SoldierConfigData;
+}
+
+   public virtual void ReceiveAlert(Vector3 alertPosition)
+{
+    if (currentState == AIState.Dead || currentState == AIState.Chasing) return;
+    
+    this.alertPosition = alertPosition;
+    this.lastKnownPlayerPosition = alertPosition; // ✅ IMPORTANTE: Actualizar posición del jugador
+    
+    if (currentState != AIState.Alert && currentState != AIState.Damaged)
     {
-        if (currentState == AIState.Dead || currentState == AIState.Chasing) return;
+        ChangeState(AIState.Alert);
+        searchTimer = 0f;
         
-        this.alertPosition = alertPosition;
-        
-        if (currentState != AIState.Alert)
+        if (enableStateDebug)
         {
-            ChangeState(AIState.Alert);
-            searchTimer = 0f;
+            Debug.Log($"📢 {enemyConfig.enemyName} recibió alerta - Posición: {alertPosition}");
         }
     }
+}
 
      protected virtual void HandleChasePersistence()
     {
@@ -390,60 +462,65 @@ public class AIController : MonoBehaviour
     }
 
     protected virtual void HandleStateBehavior()
+{
+    switch (currentState)
     {
-        switch (currentState)
-        {
-            case AIState.Patrolling:
-                PatrolBehavior();
-                break;
-            case AIState.Chasing:
-                ChaseBehavior();
-                break;
-            case AIState.Idle:
-                IdleBehavior();
-                break;
-            case AIState.Alert:
-                AlertBehavior();
-                break;
-        }
+        case AIState.Patrolling:
+            PatrolBehavior();
+            break;
+        case AIState.Chasing:
+            ChaseBehavior();
+            break;
+        case AIState.Idle:
+            IdleBehavior();
+            break;
+        case AIState.Alert:
+            AlertBehavior();
+            break;
+        case AIState.Damaged:
+            DamagedBehavior(); // ✅ NUEVO
+            break;
     }
+}
 
     protected virtual void AlertBehavior()
-    {
-        if (!enemyConfig.canMove || !isGrounded) return;
+{
+    if (!enemyConfig.canMove || !isGrounded) return;
 
-        // Moverse hacia la posición de alerta
-        Vector3 moveDirection = GetMovementDirectionToAlert();
-        RotateTowardsTarget(alertPosition);
-        
-        float currentSpeed = enemyConfig.movementSpeed * 0.7f; // Velocidad reducida en alerta
-        
-        Vector3 targetVelocity = moveDirection * currentSpeed;
-        rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
-        
-        // Debug
-        Debug.DrawLine(transform.position, alertPosition, Color.cyan);
-        
-        // Si llega a la posición de alerta, buscar alrededor
-        if (Vector3.Distance(transform.position, alertPosition) < 1f)
-        {
-            // Comportamiento de búsqueda (puede girar o moverse aleatoriamente)
-            SearchBehavior();
-        }
+    // ✅ CORREGIDO: Perseguir al JUGADOR, no a la posición de alerta
+    if (fov != null && fov.playerRef != null)
+    {
+        lastKnownPlayerPosition = fov.playerRef.transform.position;
     }
 
-    protected virtual Vector3 GetMovementDirectionToAlert()
+    // Moverse hacia la última posición conocida del jugador
+    Vector3 moveDirection = GetMovementDirectionToPlayer();
+    RotateTowardsTarget(lastKnownPlayerPosition);
+    
+    float currentSpeed = enemyConfig.movementSpeed * 0.8f; // Velocidad reducida en alerta
+    
+    Vector3 targetVelocity = moveDirection * currentSpeed;
+    rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
+    
+    // Debug visual - línea hacia el jugador
+    Debug.DrawLine(transform.position, lastKnownPlayerPosition, Color.cyan);
+    
+    // ✅ ELIMINAR: No buscar alrededor cuando llega a la posición
+    // El enemigo debe seguir persiguiendo hasta encontrar al jugador o timeout
+}
+
+   protected virtual Vector3 GetMovementDirectionToPlayer()
+{
+    Vector3 direction = (lastKnownPlayerPosition - transform.position).normalized;
+    
+    if (obstacleAvoidance != null)
     {
-        Vector3 direction = (alertPosition - transform.position).normalized;
-        
-        if (obstacleAvoidance != null)
-        {
-            Vector3 avoidanceDir = obstacleAvoidance.GetAvoidanceDirection(alertPosition);
-            direction = (direction + avoidanceDir * avoidanceWeight).normalized;
-        }
-        
-        return direction;
+        Vector3 avoidanceDir = obstacleAvoidance.GetAvoidanceDirection(lastKnownPlayerPosition);
+        direction = (direction + avoidanceDir * avoidanceWeight).normalized;
     }
+    
+    return direction;
+}
 
     protected virtual void SearchBehavior()
     {
@@ -451,6 +528,25 @@ public class AIController : MonoBehaviour
         // Por ejemplo, rotar lentamente o moverse en pequeños círculos
         transform.Rotate(0, 30f * Time.deltaTime, 0);
     }
+
+    protected virtual void ReturnToPreviousState()
+{
+    if (stateBeforeAlert != AIState.Dead && stateBeforeAlert != AIState.Chasing)
+    {
+        ChangeState(stateBeforeAlert);
+    }
+    else
+    {
+        // Fallback al estado por defecto
+        ChangeState(GetDefaultState());
+    }
+    
+    if (enableStateDebug)
+    {
+        Debug.Log($"🔄 {enemyConfig.enemyName} volviendo a {stateBeforeAlert} después de búsqueda");
+    }
+}
+
     protected virtual void ReturnToPatrol()
     {
         if (hasPatrolRoute)
@@ -622,47 +718,49 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         }
     }
 
-     public virtual void TakeDamage(float damageAmount)
+   public virtual void TakeDamage(float damageAmount)
+{
+    if (currentState == AIState.Dead) return;
+
+    currentHealth -= damageAmount;
+    Debug.Log($"💥 {enemyConfig.enemyName} recibió {damageAmount} de daño");
+
+    OnHealthChanged?.Invoke(currentHealth / enemyConfig.maxHealth);
+    
+    // Efecto de golpe
+    if (enemyConfig.hitEffect != null)
     {
-        if (currentState == AIState.Dead) return;
-
-        // Guardar el estado actual antes de la alerta
-        if (currentState != AIState.Alert)
-        {
-            stateBeforeAlert = currentState;
-        }
-
-        currentHealth -= damageAmount;
-        Debug.Log($"💥 {enemyConfig.enemyName} recibió {damageAmount} de daño");
-
-        OnHealthChanged?.Invoke(currentHealth / enemyConfig.maxHealth);
-        
-        // Cambiar al estado Alert en lugar de Damaged
-        if (currentState != AIState.Alert)
-        {
-            ChangeState(AIState.Alert);
-            alertPosition = lastKnownPlayerPosition;
-            isFirstDamage = true;
-        }
-        
-        // Efecto de golpe
-        if (enemyConfig.hitEffect != null)
-        {
-            Instantiate(enemyConfig.hitEffect, transform.position, Quaternion.identity);
-        }
-        
-        if (enemyConfig.hitSound != null)
-        {
-            AudioSource.PlayClipAtPoint(enemyConfig.hitSound, transform.position);
-        }
-
-        if (currentHealth <= 0)
-        {
-            Die();
-        }
-        
-        UpdateStateDisplays();
+        Instantiate(enemyConfig.hitEffect, transform.position, Quaternion.identity);
     }
+    
+    if (enemyConfig.hitSound != null)
+    {
+        AudioSource.PlayClipAtPoint(enemyConfig.hitSound, transform.position);
+    }
+
+    // ✅ NUEVA LÓGICA: Solo entrar en Damaged si NO está en Chasing
+    if (currentState != AIState.Chasing && currentState != AIState.Damaged && currentState != AIState.Alert)
+    {
+        // Guardar el estado actual antes del daño
+        stateBeforeAlert = currentState;
+        ChangeState(AIState.Damaged);
+        damageTimer = 0f;
+        isFirstDamage = true;
+    }
+    // ✅ Si ya está en Chasing, mantener el estado pero procesar daño
+    else if (currentState == AIState.Chasing)
+    {
+        // Solo procesar el daño sin cambiar estado
+        Debug.Log($"💥 {enemyConfig.enemyName} en Chasing - Manteniendo estado");
+    }
+
+    if (currentHealth <= 0)
+    {
+        Die();
+    }
+    
+    UpdateStateDisplays();
+}
 
 
     protected virtual void Die()
@@ -702,15 +800,20 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
 
     public virtual void Revive()
     {
-        ChangeState(GetDefaultState());
+        // ✅ RESTAURAR POSICIÓN INICIAL
+        transform.position = initialPosition;
+        transform.rotation = initialRotation;
+        
+        ChangeState(initialState);
         currentHealth = enemyConfig.maxHealth;
         isChasing = false;
         lastKnownPlayerPosition = Vector3.zero;
         alertPosition = Vector3.zero;
-        stateBeforeAlert = GetDefaultState();
+        stateBeforeAlert = initialState;
         isFirstDamage = true;
         alertTimer = 0f;
         searchTimer = 0f;
+        damageTimer = 0f;
         
         if (fov != null)
         {
@@ -720,6 +823,11 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         SetEnemyVisible(true);
         OnHealthChanged?.Invoke(1f);
         UpdateStateDisplays();
+        
+        if (enableStateDebug)
+        {
+            Debug.Log($"🔄 {enemyConfig.enemyName} revivido en posición inicial");
+        }
     }
 
     public virtual void SetPatrolPoints(List<Vector3> points)
@@ -848,4 +956,29 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         
         shootingSystem?.TryShootAtPlayer();
     }
+
+   protected virtual void DamagedBehavior()
+{
+    // Comportamiento cuando está dañado (puede ser aturdido, reducir velocidad, etc.)
+    if (!enemyConfig.canMove || !isGrounded) return;
+
+    // Reducir velocidad significativamente o detener movimiento
+    float currentSpeed = enemyConfig.movementSpeed * 0.3f;
+    
+    // Movimiento muy limitado o nulo
+    if (rb != null)
+    {
+        Vector3 slowedVelocity = rb.linearVelocity * 0.5f;
+        rb.linearVelocity = new Vector3(slowedVelocity.x, rb.linearVelocity.y, slowedVelocity.z);
+    }
+    
+    // Efecto visual opcional (parpadeo, cambio de color, etc.)
+    if (Time.frameCount % 10 == 0) // Parpadeo cada 10 frames
+    {
+        // Aquí puedes agregar efectos visuales
+    }
+    
+    // Debug visual
+    Debug.DrawRay(transform.position, Vector3.up * 2f, Color.yellow);
+}
 }

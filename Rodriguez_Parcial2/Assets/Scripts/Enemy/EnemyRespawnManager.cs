@@ -114,17 +114,19 @@ public class EnemyRespawnManager : MonoBehaviour
     }
 
     public void RespawnEnemy(AIController enemy)
-    {
-        if (enemy == null || !enemyRespawnData.ContainsKey(enemy)) return;
+{
+    if (enemy == null || !enemyRespawnData.ContainsKey(enemy)) return;
 
-        EnemyRespawnData data = enemyRespawnData[enemy];
-        enemy.transform.position = data.originalPosition;
-        enemy.transform.rotation = data.originalRotation;
-        enemy.Revive();
+    EnemyRespawnData data = enemyRespawnData[enemy];
+    
+    // ✅ SIMPLEMENTE LLAMAR AL MÉTODO REVIVE DEL ENEMIGO
+    // Ya sea el base (para soldiers) o el override (para cámaras)
+    enemy.transform.position = data.originalPosition;
+    enemy.transform.rotation = data.originalRotation;
+    enemy.Revive();
 
-//        Debug.Log($"🔁 Respawned {enemy.GetEnemyName()}");
-    }
-
+//    Debug.Log($"🔁 {enemy.GetEnemyName()} respawneado");
+}
     Vector3 GetSafeSpawnPosition(Vector3 desiredPosition)
     {
         RaycastHit hit;

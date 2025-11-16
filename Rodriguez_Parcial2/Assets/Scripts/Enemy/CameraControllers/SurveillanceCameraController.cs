@@ -17,6 +17,12 @@ public class SurveillanceCameraController : AIController
     private Renderer cameraRenderer;
     private Collider cameraCollider;
 
+    private Vector3 initialPosition;
+    private Quaternion initialPivotRotation;
+    private float initialCameraRotation = 0f;
+    private CameraState initialCameraState = CameraState.Scanning;
+    private AIState initialState;
+
      [Header("Camera References")]
     [SerializeField] private Transform pivotPoint;
     [SerializeField] private Transform detectionOrigin;
@@ -28,35 +34,51 @@ public class SurveillanceCameraController : AIController
     private CameraFieldOfViewAdapter fovAdapter;
 
     protected override void Start()
-{
-    if (enemyConfig is SurveillanceCameraConfigData)
     {
-        cameraConfig = (SurveillanceCameraConfigData)enemyConfig;
-    }
-    else
-    {
-        Debug.LogError("SurveillanceCameraController requiere SurveillanceCameraConfigData!");
-        return;
+        if (enemyConfig is SurveillanceCameraConfigData)
+        {
+            cameraConfig = (SurveillanceCameraConfigData)enemyConfig;
+        }
+        else
+        {
+            Debug.LogError("SurveillanceCameraController requiere SurveillanceCameraConfigData!");
+            return;
+        }
+
+        SetupRigidbody();
+        SetupDamageCollider();
+        
+        // ✅ GUARDAR POSICIÓN INICIAL ANTES del base.Start()
+        SaveInitialTransform();
+
+        base.Start();
+        
+        FindCameraReferences();
+        SetupCameraFieldOfView();
+        
+        // ✅ GUARDAR ROTACIÓN INICIAL DEL PIVOT
+        initialPivotRotation = pivotPoint != null ? pivotPoint.rotation : transform.rotation;
+        rotationDirection = cameraConfig.rotateClockwise ? 1f : -1f;
+        
+        cameraRenderer = GetComponent<Renderer>();
+        
+        SetupVisuals();
+        SetupAudio();
     }
 
-    SetupRigidbody();
-    SetupDamageCollider();
-    
-    base.Start();
-    
-    FindCameraReferences();
-    
-    // ✅ CONFIGURAR CAMERA FIELD OF VIEW
-    SetupCameraFieldOfView();
-    
-    initialRotation = pivotPoint != null ? pivotPoint.rotation : transform.rotation;
-    rotationDirection = cameraConfig.rotateClockwise ? 1f : -1f;
-    
-    cameraRenderer = GetComponent<Renderer>();
-    
-    SetupVisuals();
-    SetupAudio();
-}
+     protected override void SaveInitialTransform()
+    {
+        initialPosition = transform.position;
+        initialRotation = transform.rotation;
+        initialState = GetDefaultState();
+        initialCameraRotation = currentRotation;
+        initialCameraState = CameraState.Scanning;
+        
+        if (enableStateDebug)
+        {
+            Debug.Log($"💾 Cámara guardó posición inicial: {initialPosition}");
+        }
+    }
 
 private void SetupCameraFieldOfView()
 {
@@ -290,41 +312,69 @@ private void SetupRigidbody()
     }
 
   protected override void HandleDetection()
+{
+    if (isDestroyed) return;
+    
+    // ✅ MODIFICADO: Permitir detección incluso en estado Damaged
+    if (currentState == AIState.Dead) return;
+    
+    base.HandleDetection();
+    
+    if (cameraFOV != null && cameraFOV.canSeePlayer)
     {
-        if (isDestroyed) return;
-        
-        // ✅ LLAMAR AL BASE PRIMERO para que actualice la detección
-        base.HandleDetection();
-        
-        if (cameraFOV != null && cameraFOV.canSeePlayer)
+        if (cameraState != CameraState.Alert)
         {
-            if (cameraState != CameraState.Alert)
+            SetCameraState(CameraState.Alert);
+            PlaySound(cameraConfig.cameraDetectionSound);
+            
+            // ✅ FORZAR cambio de estado en el AIController también
+            ChangeState(AIState.Alert);
+            
+            // Comunicar alerta a todos los soldiers
+            if (fov != null && fov.playerRef != null)
             {
-                SetCameraState(CameraState.Alert);
-                PlaySound(cameraConfig.cameraDetectionSound);
-                
-                // ✅ FORZAR cambio de estado en el AIController también
-                ChangeState(AIState.Alert);
-                
-                // Comunicar alerta a todos los soldiers
-                if (fov != null && fov.playerRef != null)
-                {
-                    AlertOtherEnemies(fov.playerRef.transform.position);
-                }
-                else if (cameraFOV.playerRef != null)
-                {
-                    AlertOtherEnemies(cameraFOV.playerRef.transform.position);
-                }
+                AlertOtherEnemies(fov.playerRef.transform.position);
+            }
+            else if (cameraFOV.playerRef != null)
+            {
+                AlertOtherEnemies(cameraFOV.playerRef.transform.position);
             }
         }
-        else if (cameraState == CameraState.Alert && cameraState != CameraState.Destroyed)
+    }
+    else if (cameraState == CameraState.Alert && cameraState != CameraState.Destroyed)
+    {
+        // ✅ MODIFICADO: La cámara vuelve a Scanning cuando pierde de vista al jugador
+        // PERO si estaba en Damaged, mantener ese estado hasta que termine el timer
+        if (currentState != AIState.Damaged)
         {
-            // ✅ MODIFICADO: La cámara vuelve a Scanning cuando pierde de vista al jugador
             SetCameraState(CameraState.Scanning);
-            ChangeState(AIState.Idle); // ✅ También cambiar el estado del AIController
+            ChangeState(AIState.Idle);
         }
+    }
 
-        if (cameraState == CameraState.Alert && cameraConfig.canAlertOtherEnemies)
+    if (cameraState == CameraState.Alert && cameraConfig.canAlertOtherEnemies)
+    {
+        if (Time.time - lastAlertTime >= cameraConfig.alertCooldown)
+        {
+            AlertNearbyEnemies();
+            lastAlertTime = Time.time;
+        }
+    }
+}
+
+     protected override void AlertBehavior()
+{
+    // Las cámaras en alerta solo rotan hacia el jugador, no se mueven
+    if (fov != null && fov.playerRef != null && cameraFOV != null && cameraFOV.canSeePlayer)
+    {
+        // Rotar hacia el jugador
+        if (pivotPoint != null)
+        {
+            RotateTransformTowards(pivotPoint, fov.playerRef.transform.position);
+        }
+        
+        // ✅ PROPAGAR ALERTA constantemente mientras ve al jugador
+        if (cameraConfig.canAlertOtherEnemies)
         {
             if (Time.time - lastAlertTime >= cameraConfig.alertCooldown)
             {
@@ -333,25 +383,25 @@ private void SetupRigidbody()
             }
         }
     }
+}
 
-     protected override void AlertBehavior()
+    protected override void HandleStateTimers()
+{
+    // ✅ NUEVO: Timer para estado Damaged
+    if (currentState == AIState.Damaged)
     {
-        // Las cámaras en alerta siguen al jugador con la rotación
-        if (fov != null && fov.playerRef != null && cameraFOV != null && cameraFOV.canSeePlayer)
+        damageTimer += Time.deltaTime;
+        
+        // Después de 2 segundos en Damaged, volver a Idle
+        if (damageTimer >= 2f)
         {
-            // Rotar hacia el jugador
-            if (pivotPoint != null)
-            {
-                RotateTransformTowards(pivotPoint, fov.playerRef.transform.position);
-            }
+            ChangeState(AIState.Idle);
         }
     }
 
-     protected override void HandleStateTimers()
-    {
-        // Las cámaras no tienen timers de alerta por daño
-        // Solo manejan timers de scanning
-    }
+    // Las cámaras no tienen otros timers de alerta por daño
+    // Solo manejan timers de scanning
+}
 
     protected override void HandleStateBehavior()
     {
@@ -423,37 +473,42 @@ private void SetupRigidbody()
         }
     }
 
-    public override void TakeDamage(float damageAmount)
+   public override void TakeDamage(float damageAmount)
+{
+    Debug.Log($"📷 Cámara recibiendo {damageAmount} de daño");
+    if (isDestroyed || !cameraConfig.canBeDestroyed) return;
+
+    // ✅ NUEVO: Entrar en estado Damaged temporalmente para debug visual
+    if (currentState != AIState.Damaged && currentState != AIState.Dead)
     {
-        Debug.Log($"📷 Cámara recibiendo {damageAmount} de daño");
-        if (isDestroyed || !cameraConfig.canBeDestroyed) return;
-
-        // ✅ MODIFICADO: Las cámaras NO cambian de estado por recibir daño
-        // Solo procesan el daño a la salud
-        currentHealth -= damageAmount;
-
-        OnHealthChanged?.Invoke(currentHealth / enemyConfig.maxHealth);
-
-        // Efecto visual de daño (opcional)
-        if (cameraRenderer != null)
-        {
-            StartCoroutine(DamageFlash());
-        }
-
-        // Sonido de daño
-        if (enemyConfig.hitSound != null)
-        {
-            PlaySound(enemyConfig.hitSound);
-        }
-
-        if (currentHealth <= 0)
-        {
-            SetCameraState(CameraState.Destroyed);
-            ChangeState(AIState.Dead); // ✅ Solo cambia a Dead cuando se destruye
-        }
-        
-        UpdateStateDisplays();
+        ChangeState(AIState.Damaged);
+        damageTimer = 0f;
     }
+
+    currentHealth -= damageAmount;
+
+    OnHealthChanged?.Invoke(currentHealth / enemyConfig.maxHealth);
+
+    // Efecto visual de daño
+    if (cameraRenderer != null)
+    {
+        StartCoroutine(DamageFlash());
+    }
+
+    // Sonido de daño
+    if (enemyConfig.hitSound != null)
+    {
+        PlaySound(enemyConfig.hitSound);
+    }
+
+    if (currentHealth <= 0)
+    {
+        SetCameraState(CameraState.Destroyed);
+        ChangeState(AIState.Dead);
+    }
+    
+    UpdateStateDisplays();
+}
 
     private IEnumerator DamageFlash()
     {
@@ -525,31 +580,41 @@ private void SetupRigidbody()
         ChangeState(AIState.Dead);
     }
 
-     protected override void ChangeState(AIState newState)
+    protected override void ChangeState(AIState newState)
+{
+    // ✅ MODIFICADO: Permitir estado Damaged pero no Chasing
+    if (newState == AIState.Chasing)
     {
-        // ✅ PREVENIR que las cámaras entren en estado Chasing
-        if (newState == AIState.Chasing)
-        {
-            Debug.LogWarning("⚠️ Las cámaras no pueden entrar en estado Chasing");
-            return;
-        }
-        
-        base.ChangeState(newState);
+        Debug.LogWarning($"⚠️ Las cámaras no pueden entrar en estado {newState}");
+        return;
     }
+    
+    base.ChangeState(newState);
+}
 
     private void AlertNearbyEnemies()
+{
+    // ✅ CORREGIDO: Buscar TODOS los AIController y filtrar soldiers
+    AIController[] allEnemies = FindObjectsByType<AIController>(FindObjectsSortMode.None);
+    
+    foreach (AIController enemy in allEnemies)
     {
-        Collider[] nearbyEnemies = Physics.OverlapSphere(transform.position, cameraConfig.alertRadius);
-        
-        foreach (Collider collider in nearbyEnemies)
+        if (enemy != null && enemy != this && !enemy.IsDead() && IsSoldier(enemy))
         {
-            AIController enemy = collider.GetComponent<AIController>();
-            if (enemy != null && enemy != this && !enemy.IsDead())
+            ForceEnemyDetection(enemy);
+            
+            if (enableStateDebug)
             {
-                ForceEnemyDetection(enemy);
+                Debug.Log($"📹 Cámara alertó a: {enemy.GetEnemyName()}");
             }
         }
     }
+}
+
+private bool IsSoldier(AIController enemy)
+{
+    return enemy.enemyConfig is SoldierConfigData;
+}
 
     private void ForceEnemyDetection(AIController enemy)
     {
@@ -614,31 +679,35 @@ private void SetupRigidbody()
         return isDestroyed;
     }
 
-    public override void Revive()
+  public override void Revive()
+{
+    // ✅ LLAMAR AL BASE PRIMERO para restaurar posición y estado básico
+    base.Revive();
+    
+    // ✅ COMPORTAMIENTO ESPECÍFICO DE CÁMARA
+    currentRotation = initialCameraRotation;
+    cameraState = initialCameraState;
+    isDestroyed = false;
+    damageTimer = 0f;
+    
+    if (pivotPoint != null)
     {
-        base.Revive();
-        
-        isDestroyed = false;
-        cameraState = CameraState.Scanning;
-        currentRotation = 0f;
-        
-        if (cameraRenderer != null)
-            cameraRenderer.enabled = true;
-        
-        if (cameraCollider != null)
-            cameraCollider.enabled = true;
-        
-        if (spotLight != null)
-        {
-            spotLight.enabled = true;
-            spotLight.intensity = 1f;
-        }
-        
-        if (laserSight != null)
-            laserSight.enabled = cameraConfig.useLaserSight;
-        
-        transform.rotation = initialRotation;
+        pivotPoint.rotation = initialPivotRotation * Quaternion.Euler(0, currentRotation, 0);
     }
+    
+    if (spotLight != null)
+    {
+        spotLight.color = cameraConfig.neutralColor;
+    }
+    
+    if (laserSight != null)
+        laserSight.enabled = cameraConfig.useLaserSight;
+    
+    if (enableStateDebug)
+    {
+        Debug.Log($"📷 {enemyConfig.enemyName} revivida - Estado de cámara restaurado");
+    }
+}
 
    private void SetupFieldOfViewAdapter()
 {

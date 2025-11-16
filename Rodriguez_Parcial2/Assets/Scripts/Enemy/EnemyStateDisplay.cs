@@ -96,6 +96,7 @@ public class EnemyStateDisplay : MonoBehaviour
         case "patrolling": return patrollingColor;
         case "chasing": return chasingColor;
         case "alert": return damagedColor; // Usar el mismo color que damaged anteriormente
+        case "damaged": return damagedColor; // ✅ NUEVO
         case "dead": return deadColor;
         default: return Color.white;
     }
