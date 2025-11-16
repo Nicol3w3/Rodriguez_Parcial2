@@ -774,7 +774,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!54 &213982814
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -847,6 +847,10 @@ MonoBehaviour:
   avoidanceWeight: 2.5
   usePathfinding: 1
   recalculatePathInterval: 2
+  usePatrol: 0
+  patrolPoints: []
+  patrolPointReachedDistance: 1
+  patrolWaitTime: 2
   enableStateDebug: 1
 --- !u!114 &213982817
 MonoBehaviour:
@@ -2020,6 +2024,12 @@ MonoBehaviour:
   avoidanceWeight: 2.5
   usePathfinding: 1
   recalculatePathInterval: 2
+  usePatrol: 1
+  patrolPoints:
+  - {x: 22.99, y: 1.38, z: -11.62}
+  - {x: 18.23745, y: 1.239081, z: -21.453}
+  patrolPointReachedDistance: 1
+  patrolWaitTime: 2
   enableStateDebug: 1
 --- !u!114 &438799591
 MonoBehaviour:
@@ -5553,7 +5563,13 @@ MonoBehaviour:
   avoidanceWeight: 2
   usePathfinding: 0
   recalculatePathInterval: 2
+  usePatrol: 0
+  patrolPoints: []
+  patrolPointReachedDistance: 1
+  patrolWaitTime: 2
   enableStateDebug: 1
+  initialPosition: {x: 0, y: 0, z: 0}
+  initialRotation: {x: 0, y: 0, z: 0, w: 0}
   pivotPoint: {fileID: 1171673958}
   detectionOrigin: {fileID: 2010372211}
 --- !u!65 &1498028986

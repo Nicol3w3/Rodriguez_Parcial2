@@ -3,9 +3,6 @@ using System.Collections.Generic;
 
 public class SoldierAIController : AIController
 {
-    private SoldierConfigData soldierConfig;
-    private float patrolTimer = 0f;
-
     private float nextFireTime = 0f;
     private bool canShoot = true;
 
@@ -18,7 +15,9 @@ public class SoldierAIController : AIController
     [Header("Shooting References - Por Instancia")]
     public Transform shootPoint;
 
-     protected override void Start()
+    private SoldierConfigData soldierConfig;
+
+    protected override void Start()
     {
         if (enemyConfig is SoldierConfigData)
         {
@@ -30,14 +29,13 @@ public class SoldierAIController : AIController
             return;
         }
 
-        // ✅ GUARDAR POSICIÓN INICIAL ANTES del base.Start()
-        SaveInitialTransform();
-
-        base.Start();
+        // ✅ ACTIVAR PATRULLA PARA SOLDIERS
         
         InitializeShootingSystem();
-        InitializePatrolPoints();
+        
+        // ✅ VERIFICACIÓN FINAL DEL ESTADO
     }
+
 
      protected override void SaveInitialTransform()
     {
@@ -48,26 +46,6 @@ public class SoldierAIController : AIController
         if (enableStateDebug)
         {
             Debug.Log($"💾 Soldier guardó posición inicial: {initialPosition}");
-        }
-    }
-
-    protected override void InitializePatrolPoints()
-    {
-        if (soldierConfig != null && soldierConfig.canPatrol && soldierConfig.patrolWaypoints != null)
-        {
-            List<Vector3> points = new List<Vector3>();
-            foreach (Transform waypoint in soldierConfig.patrolWaypoints)
-            {
-                if (waypoint != null)
-                    points.Add(waypoint.position);
-            }
-            
-            SetPatrolPoints(points);
-            
-            if (hasPatrolRoute)
-            {
-                ChangeState(AIState.Patrolling);
-            }
         }
     }
 
@@ -92,14 +70,11 @@ public class SoldierAIController : AIController
     }
 
     protected override void InitializeFromConfig()
-    {
-        base.InitializeFromConfig();
-        
-        if (soldierConfig != null && soldierConfig.canPatrol && hasPatrolRoute)
-        {
-            currentState = AIState.Patrolling;
-        }
-    }
+{
+    base.InitializeFromConfig();
+    
+    // ✅ SOLO la llamada al base, sin lógica de patrulla
+}
 
    
 
@@ -157,47 +132,12 @@ public class SoldierAIController : AIController
     }
 }
 
-    protected override void PatrolBehavior()
-    {
-        if (!hasPatrolRoute || patrolPoints.Count == 0)
-        {
-            ChangeState(AIState.Idle);
-            return;
-        }
-
-        Vector3 targetPosition = patrolPoints[currentPatrolIndex];
-        
-        Vector3 direction = (targetPosition - transform.position).normalized;
-        direction.y = 0;
-        
-        RotateTowardsTarget(targetPosition);
-        
-        if (enemyConfig.canMove && isGrounded)
-        {
-            Vector3 targetVelocity = direction * enemyConfig.movementSpeed;
-            rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
-        }
-
-        // Cambiar waypoint cuando se acerca
-        if (Vector3.Distance(transform.position, targetPosition) < 0.5f)
-        {
-            patrolTimer += Time.deltaTime;
-            
-            if (patrolTimer >= soldierConfig.patrolWaitTime)
-            {
-                currentPatrolIndex = (currentPatrolIndex + 1) % patrolPoints.Count;
-                patrolTimer = 0f;
-                lastPatrolPosition = targetPosition;
-            }
-        }
-    }
-
      protected override void ChaseBehavior()
     {
         base.ChaseBehavior();
         
         // Soldiers disparan mientras persiguen
-        if (fov != null && fov.canSeePlayer && soldierConfig.canShoot)
+        if (fov != null && fov.canSeePlayer && soldierConfig != null && soldierConfig.canShoot)
         {
             shootingSystem?.TryShootAtPlayer();
         }
@@ -243,11 +183,10 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
 // ✅ NUEVO MÉTODO: Evasión específica para soldados
 
 
-    protected override AIState GetDefaultState()
-    {
-        return (soldierConfig != null && soldierConfig.canPatrol && hasPatrolRoute) ? 
-               AIState.Patrolling : AIState.Idle;
-    }
+   protected override AIState GetDefaultState()
+{
+    return AIState.Idle; // ❌ ELIMINAR la lógica de patrulla
+}
 
     public void SetLastKnownPosition(Vector3 position)
     {
@@ -414,15 +353,15 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
     base.TakeDamage(damageAmount);
     
     // Comportamiento adicional específico para soldiers
-    if (currentState != AIState.Dead && currentState != AIState.Alert)
+    if (currentState != AIState.Dead && currentState != AIState.Alert && currentState != AIState.Damaged)
     {
-        // Soldiers siempre entran en alerta cuando reciben daño (solo primera vez)
-        ChangeState(AIState.Alert);
+        // Soldiers siempre entran en Damaged cuando reciben daño (solo primera vez)
+        ChangeState(AIState.Damaged);
         isFirstDamage = true;
         
         if (enableStateDebug)
         {
-            Debug.Log($"💥 {enemyConfig.enemyName} recibió daño - Activando modo Alert");
+            Debug.Log($"💥 {enemyConfig.enemyName} recibió daño - Activando modo Damaged");
         }
     }
 }
@@ -430,10 +369,39 @@ protected override void DamagedBehavior()
 {
     base.DamagedBehavior();
     
-    // Comportamiento específico para soldiers durante el estado Damaged
+    // Comportamiento adicional específico para soldiers durante el estado Damaged
     // Por ejemplo: no pueden disparar, movilidad muy reducida
     
     // Soldiers no disparan mientras están dañados
     // (el sistema de disparo ya está desactivado en este estado)
+    
+    // Efecto visual adicional para soldiers
+    if (Time.frameCount % 20 == 0)
+    {
+        Debug.DrawRay(transform.position + Vector3.up * 2f, Vector3.forward * 2f, Color.red);
+    }
+}
+
+protected override void PatrolBehavior()
+{
+    // Los soldiers pueden tener comportamientos específicos durante la patrulla
+    // Por ejemplo, estar más atentos o tener diferentes velocidades
+    
+    if (!enemyConfig.canMove || !isGrounded) 
+    {
+        base.PatrolBehavior();
+        return;
+    }
+
+    // Comportamiento base de patrulla
+    base.PatrolBehavior();
+    
+    // Comportamiento adicional específico para soldiers
+    // Por ejemplo: escanear el área mientras patrulla
+    if (!isWaitingAtPoint && currentState == AIState.Patrolling)
+    {
+        // Los soldiers pueden rotar ligeramente mientras se mueven para escanear
+        transform.Rotate(0, Mathf.Sin(Time.time) * 10f * Time.deltaTime, 0);
+    }
 }
 }

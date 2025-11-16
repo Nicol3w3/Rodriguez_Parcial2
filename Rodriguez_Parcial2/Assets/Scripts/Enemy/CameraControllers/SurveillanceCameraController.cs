@@ -10,20 +10,19 @@ public class SurveillanceCameraController : AIController
     private bool isPaused = false;
     private Light spotLight;
     private LineRenderer laserSight;
-    private Quaternion initialRotation;
     private float lastAlertTime = 0f;
     private bool isDestroyed = false;
     private AudioSource audioSource;
     private Renderer cameraRenderer;
     private Collider cameraCollider;
 
-    private Vector3 initialPosition;
     private Quaternion initialPivotRotation;
     private float initialCameraRotation = 0f;
     private CameraState initialCameraState = CameraState.Scanning;
-    private AIState initialState;
+    public new Vector3 initialPosition;
+    public new Quaternion initialRotation;
 
-     [Header("Camera References")]
+    [Header("Camera References")]
     [SerializeField] private Transform pivotPoint;
     [SerializeField] private Transform detectionOrigin;
 
@@ -76,7 +75,7 @@ public class SurveillanceCameraController : AIController
         
         if (enableStateDebug)
         {
-            Debug.Log($"💾 Cámara guardó posición inicial: {initialPosition}");
+//            Debug.Log($"💾 Cámara guardó posición inicial: {initialPosition}");
         }
     }
 
@@ -686,7 +685,7 @@ private bool IsSoldier(AIController enemy)
     
     // ✅ COMPORTAMIENTO ESPECÍFICO DE CÁMARA
     currentRotation = initialCameraRotation;
-    cameraState = initialCameraState;
+    ChangeState(initialState);
     isDestroyed = false;
     damageTimer = 0f;
     
@@ -705,7 +704,7 @@ private bool IsSoldier(AIController enemy)
     
     if (enableStateDebug)
     {
-        Debug.Log($"📷 {enemyConfig.enemyName} revivida - Estado de cámara restaurado");
+//        Debug.Log($"📷 {enemyConfig.enemyName} revivida - Estado de cámara restaurado");
     }
 }
 
