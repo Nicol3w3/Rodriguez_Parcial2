@@ -5,6 +5,7 @@ public class SoldierAIController : AIController
 {
     private float nextFireTime = 0f;
     private bool canShoot = true;
+     private EnemyShootingSystem shootingSystem;
 
     private Vector3 initialPosition;
     private Quaternion initialRotation;
@@ -18,36 +19,36 @@ public class SoldierAIController : AIController
     private SoldierConfigData soldierConfig;
 
    protected override void Start()
-{
-    if (enemyConfig is SoldierConfigData)
     {
-        soldierConfig = (SoldierConfigData)enemyConfig;
-        
-        // ✅ CONFIGURAR DISPARO DESDE EL CONFIG
-        canShoot = soldierConfig.canShoot;
-        shootRange = soldierConfig.shootRange;
-        fireRate = soldierConfig.fireRate;
-        bulletDamage = soldierConfig.bulletDamage;
-        projectilePrefab = soldierConfig.bulletPrefab;
-        
-        if (soldierConfig.shootPoint != null)
+        if (enemyConfig is SoldierConfigData)
         {
-            shootPoint = soldierConfig.shootPoint;
+            soldierConfig = (SoldierConfigData)enemyConfig;
+            
+            // ✅ CONFIGURAR DISPARO DESDE SOLDIER CONFIG
+            canShoot = soldierConfig.canShoot;
+            shootRange = soldierConfig.shootRange;
+            fireRate = soldierConfig.fireRate;
+            bulletDamage = soldierConfig.bulletDamage;
+            projectilePrefab = soldierConfig.bulletPrefab;
+            
+            if (soldierConfig.shootPoint != null)
+            {
+                shootPoint = soldierConfig.shootPoint;
+            }
+        }
+        else
+        {
+            Debug.LogError("SoldierAIController requiere SoldierConfigData!");
+            return;
+        }
+
+        base.Start(); // ✅ LLAMAR AL BASE DESPUÉS de configurar las variables
+        
+        if (enableStateDebug)
+        {
+            Debug.Log($"🔫 Soldier configurado - CanShoot: {canShoot}, FireRate: {fireRate}");
         }
     }
-    else
-    {
-        Debug.LogError("SoldierAIController requiere SoldierConfigData!");
-        return;
-    }
-
-    base.Start(); // ✅ LLAMAR AL BASE DESPUÉS de configurar
-    
-    if (enableStateDebug)
-    {
-        Debug.Log($"🔫 Soldier inicializado - CanShoot: {canShoot}, FireRate: {fireRate}");
-    }
-}
 
 
      protected override void SaveInitialTransform()
@@ -62,25 +63,34 @@ public class SoldierAIController : AIController
         }
     }
 
-   private void InitializeShootingSystem()
+   protected virtual void InitializeShootingSystem()
     {
+        if (!canShoot) return; // Solo inicializar si puede disparar
+        
         shootingSystem = GetComponent<EnemyShootingSystem>();
         if (shootingSystem == null)
-            shootingSystem = gameObject.AddComponent<EnemyShootingSystem>();
-        
-        if (soldierConfig != null)
         {
-            shootingSystem.SetShootingEnabled(soldierConfig.canShoot);
-            shootingSystem.SetFireRate(soldierConfig.fireRate);
-            shootingSystem.SetShootRange(soldierConfig.shootRange);
-            shootingSystem.SetBulletDamage(soldierConfig.bulletDamage);
-            
-            if (soldierConfig.shootPoint != null)
-            {
-                shootingSystem.SetShootPoint(soldierConfig.shootPoint);
-            }
+            shootingSystem = gameObject.AddComponent<EnemyShootingSystem>();
+        }
+        
+        // CONFIGURAR DESDE VARIABLES DEL AICONTROLLER
+        shootingSystem.SetShootingEnabled(canShoot);
+        shootingSystem.SetFireRate(fireRate);
+        shootingSystem.SetShootRange(shootRange);
+        shootingSystem.SetBulletDamage(bulletDamage);
+        shootingSystem.SetProjectilePrefab(projectilePrefab);
+        
+        if (shootPoint != null)
+        {
+            shootingSystem.SetShootPoint(shootPoint);
+        }
+        
+        if (enableStateDebug)
+        {
+            Debug.Log($"🔫 {enemyConfig.enemyName} - Sistema de disparo inicializado: {shootingSystem != null}");
         }
     }
+
 
     protected override void InitializeFromConfig()
 {
@@ -92,73 +102,45 @@ public class SoldierAIController : AIController
    
 
   protected override void AlertBehavior()
-{
-    if (!enemyConfig.canMove || !isGrounded) return;
-
-    // Soldiers son más agresivos en alerta
-    if (fov != null && fov.playerRef != null)
     {
-        lastKnownPlayerPosition = fov.playerRef.transform.position;
-        
-        // ✅ FORZAR TRANSICIÓN A CHASING SI VE AL JUGADOR
-        if (fov.canSeePlayer && currentState != AIState.Chasing)
+        if (!enemyConfig.canMove || !isGrounded) return;
+
+        if (fov != null && fov.playerRef != null)
         {
-            ChangeState(AIState.Chasing);
+            lastKnownPlayerPosition = fov.playerRef.transform.position;
             
-            if (enableStateDebug)
+            // ✅ FORZAR TRANSICIÓN A CHASING SI VE AL JUGADOR
+            if (fov.canSeePlayer && currentState != AIState.Chasing)
             {
-                Debug.Log($"🚨 Soldier pasó de Alert a Chasing - Iniciando disparos");
+                ChangeState(AIState.Chasing);
+                
+                if (enableStateDebug)
+                {
+                    Debug.Log($"🚨 Soldier pasó de Alert a Chasing - Activando disparos");
+                }
             }
         }
-    }
 
-    Vector3 moveDirection = GetMovementDirectionToPlayer();
-    RotateTowardsTarget(lastKnownPlayerPosition);
-    
-    // Soldiers se mueven a velocidad casi normal en alerta
-    float currentSpeed = enemyConfig.movementSpeed * 0.9f;
-    
-    Vector3 targetVelocity = moveDirection * currentSpeed;
-    rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
-    
-    // Debug visual
-    Debug.DrawLine(transform.position, lastKnownPlayerPosition, Color.magenta);
-}
-
-    protected override void Update()
-{
-    base.Update();
-    
-    // DEBUG para confirmar que se ejecuta
-    if (Time.frameCount % 30 == 0)
-    {
-        Debug.Log($"🔄 SoldierAIController Update - Estado: {currentState}");
-    }
-    
-    if (currentState == AIState.Chasing && soldierConfig != null && soldierConfig.canShoot)
-    {
-        Debug.Log($"🎯 Estado Chasing detectado - Llamando TryShootAtPlayer");
+        Vector3 moveDirection = GetMovementDirectionToPlayer();
+        RotateTowardsTarget(lastKnownPlayerPosition);
         
-        if (shootingSystem != null)
-        {
-            shootingSystem.TryShootAtPlayer();
-        }
-        else
-        {
-            Debug.LogError("❌ shootingSystem es NULL!");
-        }
+        float currentSpeed = enemyConfig.movementSpeed * 0.9f;
+        Vector3 targetVelocity = moveDirection * currentSpeed;
+        rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
+        
+        Debug.DrawLine(transform.position, lastKnownPlayerPosition, Color.magenta);
     }
-}
+
+    protected virtual void Update()
+    {
+        UpdateStateDisplays();
+        HandleStateTimers();
+        HandleShooting(); // ✅ MANTENER en Update
+    }
 
      protected override void ChaseBehavior()
     {
         base.ChaseBehavior();
-        
-        // Soldiers disparan mientras persiguen
-        if (fov != null && fov.canSeePlayer && soldierConfig != null && soldierConfig.canShoot)
-        {
-            shootingSystem?.TryShootAtPlayer();
-        }
     }
 
 // ✅ SISTEMA MEJORADO PARA SOLDADOS
@@ -224,24 +206,23 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
     }
 
     protected override void HandleShooting()
-{
-    if (!canShoot || soldierConfig == null || !soldierConfig.canShoot) return;
-    
-    // ✅ PERMITIR DISPARAR en Chasing Y Alert (si tiene línea de visión)
-    bool canShootInCurrentState = currentState == AIState.Chasing || 
-                                 (currentState == AIState.Alert && fov != null && fov.canSeePlayer);
-    
-    if (canShootInCurrentState)
     {
-        TryShootAtPlayer();
+        if (!canShoot || soldierConfig == null || !soldierConfig.canShoot) return;
+        if (shootingSystem == null) return;
         
-        // Debug específico para transición Alert -> Chasing
-        if (enableStateDebug && currentState == AIState.Chasing && fov != null && fov.canSeePlayer)
+        // ✅ SOLDIERS DISPARAN SOLO EN CHASING (más restrictivo)
+        if (currentState == AIState.Chasing)
         {
-            Debug.Log($"🎯 Soldier disparando en estado Chasing - CanSeePlayer: {fov.canSeePlayer}");
+            shootingSystem.TryShootAtPlayer();
+            
+            // Debug específico para soldiers
+            if (enableStateDebug && Time.frameCount % 60 == 0)
+            {
+                Debug.Log($"🔫 Soldier en Chasing - Llamando TryShootAtPlayer");
+            }
         }
     }
-}
+
 
     // ✅ NUEVO MÉTODO: Verificar línea de visión
     private bool HasLineOfSightToPlayer()
@@ -262,101 +243,81 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
 
     // ✅ NUEVO MÉTODO: Realizar disparo
     private void ShootAtPlayer()
+{
+    if (fov == null || fov.playerRef == null) return;
+    
+    Vector3 shootPosition = GetShootPosition();
+    Vector3 playerPosition = fov.playerRef.transform.position + Vector3.up * 1f;
+    Vector3 shootDirection = (playerPosition - shootPosition).normalized;
+    
+    // Debug visual del disparo
+    Debug.DrawRay(shootPosition, shootDirection * soldierConfig.shootRange, Color.magenta, 0.5f);
+    
+    // Usar BulletPool
+    if (BulletPool.Instance != null && soldierConfig.bulletPrefab != null)
     {
-        if (fov == null || fov.playerRef == null) return;
+        var bullet = BulletPool.Instance.GetBullet<HybridBullet>(
+            gameObject, 
+            shootPosition, 
+            shootDirection, 
+            soldierConfig.bulletDamage
+        );
         
-        Vector3 shootPosition = GetShootPosition();
-        Vector3 playerPosition = fov.playerRef.transform.position + Vector3.up * 1f;
-        Vector3 shootDirection = (playerPosition - shootPosition).normalized;
-        
-        // Debug visual del disparo
-        Debug.DrawRay(shootPosition, shootDirection * soldierConfig.shootRange, Color.magenta, 0.5f);
-        
-        // Usar BulletPool si está disponible
-        if (BulletPool.Instance != null && soldierConfig.bulletPrefab != null)
+        if (bullet != null)
         {
-            var bullet = BulletPool.Instance.GetBullet<HybridBullet>(
-                gameObject, 
-                shootPosition, 
-                shootDirection, 
-                soldierConfig.bulletDamage
-            );
+            bullet.SetVisualRange(20f);
+            bullet.SetRaycastRange(soldierConfig.shootRange);
+            bullet.OnBulletHit += OnEnemyBulletHit;
             
-            if (bullet != null)
+            // Configurar como bala enemiga
+            HybridBullet bulletScript = bullet.GetComponent<HybridBullet>();
+            if (bulletScript != null)
             {
-                bullet.SetVisualRange(20f);
-                bullet.SetRaycastRange(soldierConfig.shootRange);
-                bullet.OnBulletHit += OnEnemyBulletHit;
+                bulletScript.isPlayerBullet = false;
+                bulletScript.dueño = this.gameObject;
             }
-        }
-        else
-        {
-            // Fallback: raycast directo
-            RaycastHit hit;
-            if (Physics.Raycast(shootPosition, shootDirection, out hit, soldierConfig.shootRange))
-            {
-                if (hit.collider.CompareTag("Player"))
-                {
-                    TPMovement_Controller player = hit.collider.GetComponent<TPMovement_Controller>();
-                    if (player != null)
-                    {
-                        player.TakeDamage(soldierConfig.bulletDamage);
-                    }
-                }
-            }
-        }
-        
-        // Efecto de sonido
-        if (soldierConfig.shootSound != null)
-        {
-            AudioSource.PlayClipAtPoint(soldierConfig.shootSound, transform.position);
-        }
-        
-        // Efecto visual (opcional)
-        // if (muzzleFlash != null) Instantiate(muzzleFlash, shootPosition, Quaternion.LookRotation(shootDirection));
-        
-        if (enableStateDebug)
-        {
-            Debug.Log($"🔫 {enemyConfig.enemyName} disparando al jugador");
         }
     }
+    
+    // Efecto de sonido
+    if (soldierConfig.shootSound != null)
+    {
+        AudioSource.PlayClipAtPoint(soldierConfig.shootSound, transform.position);
+    }
+}
 
     // ✅ NUEVO MÉTODO: Obtener posición de disparo
-    protected override Vector3 GetShootPosition()
+    private Vector3 GetShootPosition()
 {
-    // 1. Prioridad: shootPoint del soldier específico
     if (shootPoint != null)
     {
         return shootPoint.position;
     }
     
-    // 2. Fallback: shootPoint del config
     if (soldierConfig != null && soldierConfig.shootPoint != null)
     {
         return soldierConfig.shootPoint.position;
     }
     
-    // 3. Último recurso: usar el método base
-    return base.GetShootPosition();
+    return transform.position + Vector3.up * 1.5f + transform.forward * 0.5f;
 }
 
     // ✅ NUEVO MÉTODO: Cuando la bala del enemigo impacta
     private void OnEnemyBulletHit(BulletBase bullet, GameObject hitObject)
+{
+    if (hitObject.CompareTag("Player"))
     {
-        if (hitObject.CompareTag("Player"))
+        if (enableStateDebug)
         {
-            if (enableStateDebug)
-            {
-                Debug.Log($"🎯 {enemyConfig.enemyName} impactó al jugador");
-            }
-        }
-        
-        // Limpiar el evento
-        if (bullet != null)
-        {
-            bullet.OnBulletHit -= OnEnemyBulletHit;
+            Debug.Log($"🎯 {enemyConfig.enemyName} impactó al jugador");
         }
     }
+    
+    if (bullet != null)
+    {
+        bullet.OnBulletHit -= OnEnemyBulletHit;
+    }
+}
 
    public override void TakeDamage(float damageAmount)
 {
@@ -411,4 +372,35 @@ protected override void PatrolBehavior()
         transform.Rotate(0, Mathf.Sin(Time.time) * 10f * Time.deltaTime, 0);
     }
 }
+
+private void ForceShootingInChasing()
+    {
+        if (shootingSystem == null) 
+        {
+            if (enableStateDebug && Time.frameCount % 120 == 0)
+            {
+                Debug.LogError("❌ shootingSystem es NULL en Soldier!");
+            }
+            return;
+        }
+
+        // Verificar condiciones básicas
+        if (fov == null || !fov.canSeePlayer || fov.playerRef == null) 
+        {
+            if (enableStateDebug && Time.frameCount % 120 == 0)
+            {
+                Debug.Log($"👁️ No puede disparar - CanSeePlayer: {fov?.canSeePlayer}");
+            }
+            return;
+        }
+
+        // ✅ LLAMAR AL SISTEMA DE DISPARO
+        shootingSystem.TryShootAtPlayer();
+        
+        // Debug para confirmar que se está intentando disparar
+        if (enableStateDebug && Time.frameCount % 90 == 0)
+        {
+            Debug.Log($"🎯 Soldier en Chasing - Intentando disparar");
+        }
+    }
 }

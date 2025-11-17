@@ -52,7 +52,7 @@ public class SceneCollectable : MonoBehaviour
     private void PlayCollectionEffect()
     {
         // Puedes agregar aquí efectos de partículas o sonido
-        Debug.Log($"🎁 Recolectado: {collectableData.collectableName}");
+//        Debug.Log($"🎁 Recolectado: {collectableData.collectableName}");
         
         // Ejemplo: efecto de partículas
         // if (collectionParticles != null) Instantiate(collectionParticles, transform.position, Quaternion.identity);

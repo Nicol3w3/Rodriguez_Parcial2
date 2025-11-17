@@ -14,6 +14,7 @@ public class AIController : MonoBehaviour
     public float bulletDamage = 20f;
     public GameObject projectilePrefab;
     public Transform shootPoint;
+    protected float nextFireTime = 0f;
     
     [Header("Ground Detection")]
     public float groundCheckDistance = 0.1f;
@@ -63,7 +64,6 @@ public class AIController : MonoBehaviour
     protected float patrolWaitTimer = 0f;
     protected bool isWaitingAtPoint = false;
 
-     protected float nextFireTime = 0f;
 
     protected float currentHealth;
     public bool isChasing { get; protected set; } = false;
@@ -89,36 +89,34 @@ public class AIController : MonoBehaviour
     [Header("State Debug")]
     [SerializeField] public bool enableStateDebug = true;
 
-    protected virtual void Start()
-{
-    // ✅ GUARDAR POSICIÓN INICIAL
-    initialPosition = transform.position;
-    initialRotation = transform.rotation;
-    
-    InitializeFromConfig();
-    InitializeShootingSystem();
-    
-    // ✅ MOVER InitializePatrolSystem AQUÍ para que soldiers lo overrideen
-    
-    RegisterWithManager();
-    
-    if (enemyConfig.useObstacleAvoidance)
+   protected virtual void Start()
     {
-        obstacleAvoidance = GetComponent<ObstacleAvoidance>();
-    }
-    
-    UpdateStateDisplays();
-    SetupDamageCollider();
-    
-    if (usePathfinding)
-    {
-        pathfinding = GetComponent<DynamicPathfinding>();
-        if (pathfinding == null)
+        // ✅ GUARDAR POSICIÓN INICIAL
+        initialPosition = transform.position;
+        initialRotation = transform.rotation;
+        
+        InitializeFromConfig();
+        InitializeShootingSystem(); // ✅ INICIALIZAR SISTEMA DE DISPARO
+        
+        RegisterWithManager();
+        
+        if (enemyConfig.useObstacleAvoidance)
         {
-            pathfinding = gameObject.AddComponent<DynamicPathfinding>();
+            obstacleAvoidance = GetComponent<ObstacleAvoidance>();
+        }
+        
+        UpdateStateDisplays();
+        SetupDamageCollider();
+        
+        if (usePathfinding)
+        {
+            pathfinding = GetComponent<DynamicPathfinding>();
+            if (pathfinding == null)
+            {
+                pathfinding = gameObject.AddComponent<DynamicPathfinding>();
+            }
         }
     }
-}
 
 
 
@@ -769,7 +767,7 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         
         if (enableStateDebug)
         {
-            Debug.Log($"💢 {enemyConfig.enemyName} entró en estado Damaged (primera vez)");
+//            Debug.Log($"💢 {enemyConfig.enemyName} entró en estado Damaged (primera vez)");
         }
     }
     // ✅ Si ya está en Alert o Chasing, mantener el estado actual
@@ -961,7 +959,7 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
     }
 }
 
- protected virtual void InitializeShootingSystem()
+protected virtual void InitializeShootingSystem()
     {
         if (!canShoot) return; // Solo inicializar si puede disparar
         
@@ -971,7 +969,7 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
             shootingSystem = gameObject.AddComponent<EnemyShootingSystem>();
         }
         
-        // Configurar desde variables del AIController
+        // CONFIGURAR DESDE VARIABLES DEL AICONTROLLER
         shootingSystem.SetShootingEnabled(canShoot);
         shootingSystem.SetFireRate(fireRate);
         shootingSystem.SetShootRange(shootRange);
@@ -982,19 +980,32 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         {
             shootingSystem.SetShootPoint(shootPoint);
         }
+        
+        if (enableStateDebug)
+        {
+//            Debug.Log($"🔫 {enemyConfig.enemyName} - Sistema de disparo inicializado: {shootingSystem != null}");
+        }
     }
 
+    // ✅ MODIFICAR HandleShooting para usar EnemyShootingSystem
     protected virtual void HandleShooting()
-{
-    if (!canShoot) return;
-    
-    // ✅ PERMITIR DISPARAR en Chasing Y Alert (si tiene línea de visión)
-    if (currentState == AIState.Chasing || 
-        (currentState == AIState.Alert && fov != null && fov.canSeePlayer))
     {
-        TryShootAtPlayer();
+        if (!canShoot) return;
+        if (shootingSystem == null) return;
+        
+        // ✅ PERMITIR DISPARAR en Chasing Y Alert (si tiene línea de visión)
+        if (currentState == AIState.Chasing || 
+            (currentState == AIState.Alert && fov != null && fov.canSeePlayer))
+        {
+            shootingSystem.TryShootAtPlayer();
+            
+            // Debug para confirmar que se está intentando disparar
+            if (enableStateDebug && Time.frameCount % 90 == 0)
+            {
+//                Debug.Log($"🎯 {enemyConfig.enemyName} - Intentando disparar en estado: {currentState}");
+            }
+        }
     }
-}
 
 protected virtual void TryShootAtPlayer()
 {

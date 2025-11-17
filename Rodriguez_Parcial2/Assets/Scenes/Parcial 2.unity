@@ -1861,7 +1861,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   pauseMenuPanel: {fileID: 975437466}
-  pauseMenuUI: {fileID: 1207905476}
   resumeButton: {fileID: 524671539}
   quitButton: {fileID: 1300632832}
   audioMixer: {fileID: 0}
@@ -6266,7 +6265,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!54 &1498028982
 Rigidbody:
   m_ObjectHideFlags: 0

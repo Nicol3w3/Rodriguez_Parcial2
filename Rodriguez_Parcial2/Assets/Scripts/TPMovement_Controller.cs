@@ -276,25 +276,26 @@ public class TPMovement_Controller : MonoBehaviour
 }
 
     private void Update()
+{
+    if (IsGamePaused()) 
     {
-         if (IsGamePaused()) 
-    {
-        // Opcional: Detener cualquier movimiento residual
-        if (controller != null && controller.enabled)
+        // Detener movimiento cuando está en pausa
+        if (controller != null)
         {
             currentVelocity = Vector3.zero;
             verticalVelocity = Vector3.zero;
         }
         return;
     }
-
-        if (isDead) return;
-        HandleStamina();
-        GroundedCheck();
-        JumpAndGravity();
-        Move();
-        HandleCrouch();
-    }
+    
+    // Tu código normal aquí...
+    if (isDead) return;
+    HandleStamina();
+    GroundedCheck();
+    JumpAndGravity();
+    Move();
+    HandleCrouch();
+}
 
      private void GroundedCheck()
     {
@@ -1267,7 +1268,7 @@ public void AddMag()
 {
     currentMagazines++;
     UpdateAmmoUI();
-    Debug.Log($"➕ Cargador añadido. Total: {currentMagazines}");
+//    Debug.Log($"➕ Cargador añadido. Total: {currentMagazines}");
 }
 
 // ✅ MÉTODO PARA CURAR (ya debería existir)
@@ -1276,21 +1277,13 @@ public void RegenHeal(float healAmount)
     currentHealth += healAmount;
     currentHealth = Mathf.Min(currentHealth, maxHealth);
     UpdateHealthUI();
-    Debug.Log($"❤️ Salud restaurada: {currentHealth}/{maxHealth}");
+//    Debug.Log($"❤️ Salud restaurada: {currentHealth}/{maxHealth}");
 }
 
 private bool IsGamePaused()
 {
-    try
-    {
-        // ✅ USAR EL SINGLETON EN LUGAR DE FindObjectOfType
-        return PauseMenu.IsPaused() || Time.timeScale < 0.1f;
-    }
-    catch (System.Exception e)
-    {
-        Debug.LogWarning($"⚠️ Error verificando estado de pausa: {e.Message}");
-        return false;
-    }
+    // Verificación directa y simple
+    return Time.timeScale < 0.1f;
 }
 
 private PauseMenu _cachedPauseMenu;

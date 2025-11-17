@@ -1,15 +1,13 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
-using TMPro;
 using UnityEngine.Audio;
 using System.Collections;
 
 public class PauseMenu : MonoBehaviour
 {
     [Header("UI References")]
-    public GameObject pauseMenuPanel; // Panel principal
-    public GameObject pauseMenuUI; // ✅ NUEVO: Referencia a TODO el UI del menú de pausa
+    public GameObject pauseMenuPanel;
     public Button resumeButton;
     public Button quitButton;
     
@@ -24,83 +22,40 @@ public class PauseMenu : MonoBehaviour
     public bool hideCursorOnResume = true;
     
     private bool isPaused = false;
-    private PlayerInput playerInput;
     private InputAction pauseAction;
-    private bool isInitialized = false;
-
-    private static PauseMenu _instance;
-    public static PauseMenu Instance => _instance;
 
     private void Awake()
     {
-        if (_instance != null && _instance != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-        _instance = this;
-        
         InitializePauseSystem();
     }
 
     private void InitializePauseSystem()
     {
-        if (isInitialized) return;
-
         try
         {
-            playerInput = FindObjectOfType<PlayerInput>();
+            // ✅ CREAR ACCIÓN DE PAUSA INDEPENDIENTE
+            pauseAction = new InputAction(
+                name: "PauseAction",
+                type: InputActionType.Button,
+                binding: "<Keyboard>/escape"
+            );
             
-            if (playerInput != null)
-            {
-                var actionMap = playerInput.actions.FindActionMap("Player");
-                if (actionMap != null)
-                {
-                    pauseAction = actionMap.FindAction("Pause");
-                }
-                
-                if (pauseAction == null)
-                {
-                    pauseAction = playerInput.actions.FindAction("Pause");
-                }
-
-                if (pauseAction != null)
-                {
-                    pauseAction.performed -= OnPauseInput;
-                    pauseAction.performed += OnPauseInput;
-                    pauseAction.Enable();
-                }
-                else
-                {
-                    Debug.LogWarning("⚠️ No se encontró la acción 'Pause' en el Input System");
-                }
-            }
-            else
-            {
-                Debug.LogWarning("⚠️ No se encontró PlayerInput en la escena");
-            }
+            pauseAction.performed += OnPauseInput;
+            pauseAction.Enable();
             
+//            Debug.Log("✅ Acción de pausa creada correctamente");
+            
+            // Configurar botones
             if (resumeButton != null)
-            {
-                resumeButton.onClick.RemoveAllListeners();
                 resumeButton.onClick.AddListener(ResumeGame);
-            }
             else
-            {
-                Debug.LogWarning("⚠️ ResumeButton no asignado en el inspector");
-            }
+                Debug.LogWarning("⚠️ ResumeButton no asignado");
                 
             if (quitButton != null)
-            {
-                quitButton.onClick.RemoveAllListeners();
                 quitButton.onClick.AddListener(QuitGame);
-            }
             else
-            {
-                Debug.LogWarning("⚠️ QuitButton no asignado en el inspector");
-            }
+                Debug.LogWarning("⚠️ QuitButton no asignado");
 
-            isInitialized = true;
         }
         catch (System.Exception e)
         {
@@ -110,17 +65,31 @@ public class PauseMenu : MonoBehaviour
 
     private void Start()
     {
-        // ✅ OCULTAR TODO EL MENÚ AL INICIAR
-        SetPauseMenuVisible(false);
+        if (pauseMenuPanel != null)
+            pauseMenuPanel.SetActive(false);
+        else
+            Debug.LogWarning("⚠️ PauseMenuPanel no asignado");
+            
+        SetCursorState(false);
     }
 
     private void OnPauseInput(InputAction.CallbackContext context)
     {
         if (!context.performed) return;
         
-        if (this == null || !isActiveAndEnabled || !gameObject.activeInHierarchy) return;
+        // ✅ USAR CORRUTINA PARA MANEJAR EL INPUT
+        StartCoroutine(HandlePauseInputCoroutine());
+    }
+
+    private IEnumerator HandlePauseInputCoroutine()
+    {
+        // Pequeño delay para procesamiento seguro
+        yield return null;
         
-        TogglePause();
+        if (this != null && isActiveAndEnabled)
+        {
+            TogglePause();
+        }
     }
 
     public void TogglePause()
@@ -141,12 +110,11 @@ public class PauseMenu : MonoBehaviour
         
         isPaused = true;
         
-        // ✅ MOSTRAR TODO EL MENÚ
-        SetPauseMenuVisible(true);
+        if (pauseMenuPanel != null)
+            pauseMenuPanel.SetActive(true);
         
         Time.timeScale = 0f;
         SetCursorState(true);
-        DisablePlayerInput();
         SetAudioVolume(pausedVolume);
         
 //        Debug.Log("⏸️ Juego en pausa");
@@ -158,50 +126,20 @@ public class PauseMenu : MonoBehaviour
         
         isPaused = false;
         
-        // ✅ OCULTAR TODO EL MENÚ
-        SetPauseMenuVisible(false);
+        if (pauseMenuPanel != null)
+            pauseMenuPanel.SetActive(false);
         
         Time.timeScale = 1f;
         SetCursorState(false);
-        EnablePlayerInput();
         SetAudioVolume(normalVolume);
         
 //        Debug.Log("▶️ Juego reanudado");
     }
 
-    // ✅ NUEVO: Método para mostrar/ocultar todo el menú
-    private void SetPauseMenuVisible(bool visible)
-    {
-        // Opción 1: Si tienes un GameObject padre que contiene TODO el menú
-        if (pauseMenuUI != null)
-        {
-            pauseMenuUI.SetActive(visible);
-        }
-        // Opción 2: Si usas el panel principal y otros elementos por separado
-        else if (pauseMenuPanel != null)
-        {
-            pauseMenuPanel.SetActive(visible);
-        }
-        // Opción 3: Fallback - desactivar este GameObject (si es el menú completo)
-        else
-        {
-            gameObject.SetActive(visible);
-            Debug.LogWarning("⚠️ Usando GameObject completo como menú de pausa");
-        }
-        
-        // ✅ ACTIVAR/DESACTIVAR BOTONES POR SEPARADO POR SI ACASO
-        if (resumeButton != null)
-            resumeButton.gameObject.SetActive(visible);
-        if (quitButton != null)
-            quitButton.gameObject.SetActive(visible);
-    }
-
-    // ... (el resto de los métodos permanecen igual)
     public void QuitGame()
     {
 //        Debug.Log("🚪 Saliendo del juego...");
         CleanupBeforeExit();
-        Time.timeScale = 1f;
         
         #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
@@ -246,44 +184,6 @@ public class PauseMenu : MonoBehaviour
         }
     }
 
-    private void DisablePlayerInput()
-    {
-        try
-        {
-            if (playerInput != null)
-                playerInput.enabled = false;
-                
-            TPMovement_Controller playerController = FindObjectOfType<TPMovement_Controller>();
-            if (playerController != null && playerController.isActiveAndEnabled)
-            {
-                playerController.SetCanShoot(false);
-            }
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"⚠️ Error deshabilitando input del jugador: {e.Message}");
-        }
-    }
-
-    private void EnablePlayerInput()
-    {
-        try
-        {
-            if (playerInput != null)
-                playerInput.enabled = true;
-                
-            TPMovement_Controller playerController = FindObjectOfType<TPMovement_Controller>();
-            if (playerController != null && playerController.isActiveAndEnabled)
-            {
-                playerController.SetCanShoot(true);
-            }
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"⚠️ Error habilitando input del jugador: {e.Message}");
-        }
-    }
-
     private void CleanupBeforeExit()
     {
         try
@@ -298,12 +198,6 @@ public class PauseMenu : MonoBehaviour
                 pauseAction.Disable();
                 pauseAction = null;
             }
-            
-            if (resumeButton != null)
-                resumeButton.onClick.RemoveAllListeners();
-                
-            if (quitButton != null)
-                quitButton.onClick.RemoveAllListeners();
         }
         catch (System.Exception e)
         {
@@ -313,15 +207,9 @@ public class PauseMenu : MonoBehaviour
 
     public bool IsGamePaused() => isPaused;
 
-    public static bool IsPaused()
-    {
-        return _instance != null && _instance.isPaused;
-    }
-
     private void OnDestroy()
     {
         CleanupBeforeExit();
-        _instance = null;
     }
 
     private void OnApplicationQuit()

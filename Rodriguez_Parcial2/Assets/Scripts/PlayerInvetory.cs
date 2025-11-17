@@ -78,7 +78,7 @@ public class PlayerInventory : MonoBehaviour
                 playerController.AddMag();
             }
             
-            Debug.Log($"🔫 +{collectable.ammoMagazines} cargador(es) añadido(s)");
+//            Debug.Log($"🔫 +{collectable.ammoMagazines} cargador(es) añadido(s)");
         }
     }
 
