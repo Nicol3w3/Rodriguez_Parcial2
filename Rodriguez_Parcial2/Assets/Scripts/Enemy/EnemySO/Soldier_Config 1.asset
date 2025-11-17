@@ -27,7 +27,7 @@ MonoBehaviour:
     m_Bits: 64
   obstructionMask:
     serializedVersion: 2
-    m_Bits: 8
+    m_Bits: 264
   damageToPlayer: 5
   canDealDamage: 1
   canPatrol: 1

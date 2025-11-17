@@ -17,24 +17,37 @@ public class SoldierAIController : AIController
 
     private SoldierConfigData soldierConfig;
 
-    protected override void Start()
+   protected override void Start()
+{
+    if (enemyConfig is SoldierConfigData)
     {
-        if (enemyConfig is SoldierConfigData)
-        {
-            soldierConfig = (SoldierConfigData)enemyConfig;
-        }
-        else
-        {
-            Debug.LogError("SoldierAIController requiere SoldierConfigData!");
-            return;
-        }
-
-        // ✅ ACTIVAR PATRULLA PARA SOLDIERS
+        soldierConfig = (SoldierConfigData)enemyConfig;
         
-        InitializeShootingSystem();
+        // ✅ CONFIGURAR DISPARO DESDE EL CONFIG
+        canShoot = soldierConfig.canShoot;
+        shootRange = soldierConfig.shootRange;
+        fireRate = soldierConfig.fireRate;
+        bulletDamage = soldierConfig.bulletDamage;
+        projectilePrefab = soldierConfig.bulletPrefab;
         
-        // ✅ VERIFICACIÓN FINAL DEL ESTADO
+        if (soldierConfig.shootPoint != null)
+        {
+            shootPoint = soldierConfig.shootPoint;
+        }
     }
+    else
+    {
+        Debug.LogError("SoldierAIController requiere SoldierConfigData!");
+        return;
+    }
+
+    base.Start(); // ✅ LLAMAR AL BASE DESPUÉS de configurar
+    
+    if (enableStateDebug)
+    {
+        Debug.Log($"🔫 Soldier inicializado - CanShoot: {canShoot}, FireRate: {fireRate}");
+    }
+}
 
 
      protected override void SaveInitialTransform()
@@ -78,7 +91,7 @@ public class SoldierAIController : AIController
 
    
 
-   protected override void AlertBehavior()
+  protected override void AlertBehavior()
 {
     if (!enemyConfig.canMove || !isGrounded) return;
 
@@ -86,6 +99,17 @@ public class SoldierAIController : AIController
     if (fov != null && fov.playerRef != null)
     {
         lastKnownPlayerPosition = fov.playerRef.transform.position;
+        
+        // ✅ FORZAR TRANSICIÓN A CHASING SI VE AL JUGADOR
+        if (fov.canSeePlayer && currentState != AIState.Chasing)
+        {
+            ChangeState(AIState.Chasing);
+            
+            if (enableStateDebug)
+            {
+                Debug.Log($"🚨 Soldier pasó de Alert a Chasing - Iniciando disparos");
+            }
+        }
     }
 
     Vector3 moveDirection = GetMovementDirectionToPlayer();
@@ -99,12 +123,6 @@ public class SoldierAIController : AIController
     
     // Debug visual
     Debug.DrawLine(transform.position, lastKnownPlayerPosition, Color.magenta);
-    
-    // Soldiers pueden disparar incluso en estado de alerta si ven al jugador
-    if (fov != null && fov.canSeePlayer && soldierConfig != null && soldierConfig.canShoot)
-    {
-        shootingSystem?.TryShootAtPlayer();
-    }
 }
 
     protected override void Update()
@@ -205,24 +223,25 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
         }
     }
 
-     private void HandleShooting()
+    protected override void HandleShooting()
+{
+    if (!canShoot || soldierConfig == null || !soldierConfig.canShoot) return;
+    
+    // ✅ PERMITIR DISPARAR en Chasing Y Alert (si tiene línea de visión)
+    bool canShootInCurrentState = currentState == AIState.Chasing || 
+                                 (currentState == AIState.Alert && fov != null && fov.canSeePlayer);
+    
+    if (canShootInCurrentState)
     {
-        if (fov == null || !fov.canSeePlayer || fov.playerRef == null) return;
+        TryShootAtPlayer();
         
-        // Verificar si está en rango de disparo
-        float distanceToPlayer = Vector3.Distance(transform.position, fov.playerRef.transform.position);
-        if (distanceToPlayer > soldierConfig.shootRange) return;
-        
-        // Verificar línea de visión
-        if (!HasLineOfSightToPlayer()) return;
-        
-        // Verificar rate of fire
-        if (Time.time >= nextFireTime && canShoot)
+        // Debug específico para transición Alert -> Chasing
+        if (enableStateDebug && currentState == AIState.Chasing && fov != null && fov.canSeePlayer)
         {
-            ShootAtPlayer();
-            nextFireTime = Time.time + soldierConfig.fireRate;
+            Debug.Log($"🎯 Soldier disparando en estado Chasing - CanSeePlayer: {fov.canSeePlayer}");
         }
     }
+}
 
     // ✅ NUEVO MÉTODO: Verificar línea de visión
     private bool HasLineOfSightToPlayer()
@@ -303,23 +322,23 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
     }
 
     // ✅ NUEVO MÉTODO: Obtener posición de disparo
-    private Vector3 GetShootPosition()
+    protected override Vector3 GetShootPosition()
+{
+    // 1. Prioridad: shootPoint del soldier específico
+    if (shootPoint != null)
     {
-        // 1. Prioridad: shootPoint del soldier específico
-        if (shootPoint != null)
-        {
-            return shootPoint.position;
-        }
-        
-        // 2. Fallback: shootPoint del config (para compatibilidad)
-        if (soldierConfig != null && soldierConfig.shootPoint != null)
-        {
-            return soldierConfig.shootPoint.position;
-        }
-        
-        // 3. Último recurso: posición por defecto
-        return transform.position + Vector3.up * 1.5f + transform.forward * 0.5f;
+        return shootPoint.position;
     }
+    
+    // 2. Fallback: shootPoint del config
+    if (soldierConfig != null && soldierConfig.shootPoint != null)
+    {
+        return soldierConfig.shootPoint.position;
+    }
+    
+    // 3. Último recurso: usar el método base
+    return base.GetShootPosition();
+}
 
     // ✅ NUEVO MÉTODO: Cuando la bala del enemigo impacta
     private void OnEnemyBulletHit(BulletBase bullet, GameObject hitObject)
@@ -341,29 +360,17 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
 
    public override void TakeDamage(float damageAmount)
 {
-    // ✅ NUEVO: Si ya está en Chasing, usar la lógica base que NO cambia estado
-    if (currentState == AIState.Chasing)
+    // ✅ NUEVO: Si ya está en Chasing o Alert, usar la lógica base
+    if (currentState == AIState.Chasing || currentState == AIState.Alert)
     {
         base.TakeDamage(damageAmount);
         return;
     }
 
-    // ✅ COMPORTAMIENTO ORIGINAL solo si NO está en Chasing
-    // Llamar al base primero para manejar la salud y efectos
+    // ✅ COMPORTAMIENTO ORIGINAL solo si NO está en Chasing o Alert
     base.TakeDamage(damageAmount);
     
-    // Comportamiento adicional específico para soldiers
-    if (currentState != AIState.Dead && currentState != AIState.Alert && currentState != AIState.Damaged)
-    {
-        // Soldiers siempre entran en Damaged cuando reciben daño (solo primera vez)
-        ChangeState(AIState.Damaged);
-        isFirstDamage = true;
-        
-        if (enableStateDebug)
-        {
-            Debug.Log($"💥 {enemyConfig.enemyName} recibió daño - Activando modo Damaged");
-        }
-    }
+    // El comportamiento adicional ya está manejado en el base
 }
 protected override void DamagedBehavior()
 {

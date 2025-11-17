@@ -63,6 +63,7 @@ public class AIController : MonoBehaviour
     protected float patrolWaitTimer = 0f;
     protected bool isWaitingAtPoint = false;
 
+     protected float nextFireTime = 0f;
 
     protected float currentHealth;
     public bool isChasing { get; protected set; } = false;
@@ -290,14 +291,14 @@ public class AIController : MonoBehaviour
         case AIState.Damaged:
             damageTimer += Time.deltaTime;
             
-            // ✅ CORREGIDO: Después de X segundos en Damaged, pasar a Alert
-            if (damageTimer >= 2f) // 2 segundos en estado Damaged
+            // ✅ CORREGIDO: Después de 2 segundos en Damaged, pasar a Alert
+            if (damageTimer >= 2f)
             {
                 ChangeState(AIState.Alert);
                 alertTimer = 0f;
                 searchTimer = 0f;
                 
-                // ✅ ACTUALIZAR: Guardar posición del jugador al entrar en Alert
+                // Actualizar posición del jugador si está visible
                 if (fov != null && fov.playerRef != null)
                 {
                     lastKnownPlayerPosition = fov.playerRef.transform.position;
@@ -325,6 +326,11 @@ public class AIController : MonoBehaviour
             if (fov != null && fov.canSeePlayer && currentState != AIState.Chasing)
             {
                 ChangeState(AIState.Chasing);
+                
+                if (enableStateDebug)
+                {
+                    Debug.Log($"🎯 {enemyConfig.enemyName} vio al jugador - Pasando de Alert a Chasing");
+                }
             }
             
             // ✅ MODIFICADO: Solo volver si NO hay propagación de alerta
@@ -336,6 +342,8 @@ public class AIController : MonoBehaviour
             
         case AIState.Chasing:
             chaseTimer += Time.deltaTime;
+            
+            // ✅ Desde Chasing no puede volver a Damaged, solo mantiene persecución
             break;
     }
 }
@@ -746,25 +754,47 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         AudioSource.PlayClipAtPoint(enemyConfig.hitSound, transform.position);
     }
 
-    // ✅ CORREGIDO: Siempre entrar en Damaged primero (excepto si ya está en Chase)
-    if (currentState != AIState.Chasing && currentState != AIState.Damaged && currentState != AIState.Dead)
+    // ✅ CORREGIDO: Solo entrar en Damaged si NO está en Alert, Chasing o ya pasó por Damaged antes
+    if (currentState != AIState.Chasing && 
+        currentState != AIState.Alert && 
+        currentState != AIState.Damaged && 
+        currentState != AIState.Dead &&
+        isFirstDamage) // ✅ SOLO la primera vez
     {
         // Guardar el estado actual antes del daño
         stateBeforeAlert = currentState;
         ChangeState(AIState.Damaged);
         damageTimer = 0f;
-        isFirstDamage = true;
+        isFirstDamage = false; // ✅ MARCAR que ya pasó por Damaged
         
         if (enableStateDebug)
         {
-//            Debug.Log($"💢 {enemyConfig.enemyName} entró en estado Damaged");
+            Debug.Log($"💢 {enemyConfig.enemyName} entró en estado Damaged (primera vez)");
         }
     }
-    // ✅ Si ya está en Chasing, mantener el estado pero procesar daño
-    else if (currentState == AIState.Chasing)
+    // ✅ Si ya está en Alert o Chasing, mantener el estado actual
+    else if (currentState == AIState.Alert || currentState == AIState.Chasing)
     {
         // Solo procesar el daño sin cambiar estado
-        Debug.Log($"💥 {enemyConfig.enemyName} en Chasing - Manteniendo estado");
+        if (enableStateDebug)
+        {
+//            Debug.Log($"💥 {enemyConfig.enemyName} en {currentState} - Recibió daño pero mantiene estado");
+        }
+    }
+    // ✅ Si ya pasó por Damaged antes y está en un estado normal, ir directamente a Alert
+    else if (!isFirstDamage && 
+             currentState != AIState.Alert && 
+             currentState != AIState.Chasing && 
+             currentState != AIState.Dead)
+    {
+        ChangeState(AIState.Alert);
+        alertTimer = 0f;
+        searchTimer = 0f;
+        
+        if (enableStateDebug)
+        {
+            Debug.Log($"🚨 {enemyConfig.enemyName} fue dañado nuevamente - Entrando directamente a Alert");
+        }
     }
 
     if (currentHealth <= 0)
@@ -955,12 +985,144 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
     }
 
     protected virtual void HandleShooting()
+{
+    if (!canShoot) return;
+    
+    // ✅ PERMITIR DISPARAR en Chasing Y Alert (si tiene línea de visión)
+    if (currentState == AIState.Chasing || 
+        (currentState == AIState.Alert && fov != null && fov.canSeePlayer))
     {
-        if (!canShoot) return;
-        if (currentState != AIState.Chasing) return;
-        
-        shootingSystem?.TryShootAtPlayer();
+        TryShootAtPlayer();
     }
+}
+
+protected virtual void TryShootAtPlayer()
+{
+    if (fov == null || !fov.canSeePlayer || fov.playerRef == null) return;
+    
+    // Verificar si está en rango de disparo
+    float distanceToPlayer = Vector3.Distance(transform.position, fov.playerRef.transform.position);
+    if (distanceToPlayer > shootRange) return;
+    
+    // Verificar línea de visión
+    if (!HasLineOfSightToPlayer()) return;
+    
+    // Verificar rate of fire
+    if (Time.time >= nextFireTime && canShoot)
+    {
+        ShootAtPlayer();
+        nextFireTime = Time.time + fireRate;
+    }
+}
+
+protected virtual void ShootAtPlayer()
+{
+    if (fov == null || fov.playerRef == null) return;
+    
+    Vector3 shootPosition = GetShootPosition();
+    Vector3 playerPosition = fov.playerRef.transform.position + Vector3.up * 1f;
+    Vector3 shootDirection = (playerPosition - shootPosition).normalized;
+    
+    // Debug visual del disparo
+    Debug.DrawRay(shootPosition, shootDirection * shootRange, Color.magenta, 0.5f);
+    
+    // Usar BulletPool si está disponible
+    if (BulletPool.Instance != null && projectilePrefab != null)
+    {
+        var bullet = BulletPool.Instance.GetBullet<HybridBullet>(
+            gameObject, 
+            shootPosition, 
+            shootDirection, 
+            bulletDamage
+        );
+        
+        if (bullet != null)
+        {
+            bullet.SetVisualRange(20f);
+            bullet.SetRaycastRange(shootRange);
+            bullet.OnBulletHit += OnEnemyBulletHit;
+            
+            // ✅ CONFIGURAR como bala enemiga
+            HybridBullet bulletScript = bullet.GetComponent<HybridBullet>();
+            if (bulletScript != null)
+            {
+                bulletScript.isPlayerBullet = false;
+                bulletScript.dueño = this.gameObject;
+            }
+        }
+    }
+    else
+    {
+        // Fallback: raycast directo
+        RaycastHit hit;
+        if (Physics.Raycast(shootPosition, shootDirection, out hit, shootRange))
+        {
+            if (hit.collider.CompareTag("Player"))
+            {
+                TPMovement_Controller player = hit.collider.GetComponent<TPMovement_Controller>();
+                if (player != null)
+                {
+                    player.TakeDamage(bulletDamage);
+                }
+            }
+        }
+    }
+    
+    // Efecto de sonido
+    if (enemyConfig.detectionSound != null)
+    {
+        AudioSource.PlayClipAtPoint(enemyConfig.detectionSound, transform.position);
+    }
+    
+    if (enableStateDebug)
+    {
+        Debug.Log($"🔫 {enemyConfig.enemyName} disparando al jugador - Estado: {currentState}");
+    }
+}
+
+protected virtual void OnEnemyBulletHit(BulletBase bullet, GameObject hitObject)
+{
+    if (hitObject.CompareTag("Player"))
+    {
+        if (enableStateDebug)
+        {
+            Debug.Log($"🎯 {enemyConfig.enemyName} impactó al jugador");
+        }
+    }
+    
+    // Limpiar el evento
+    if (bullet != null)
+    {
+        bullet.OnBulletHit -= OnEnemyBulletHit;
+    }
+}
+
+protected virtual bool HasLineOfSightToPlayer()
+{
+    if (fov == null || fov.playerRef == null) return false;
+    
+    Vector3 shootPosition = GetShootPosition();
+    Vector3 playerPosition = fov.playerRef.transform.position + Vector3.up * 1f;
+    
+    RaycastHit hit;
+    if (Physics.Raycast(shootPosition, (playerPosition - shootPosition).normalized, out hit, shootRange, enemyConfig.obstructionMask))
+    {
+        return hit.collider.CompareTag("Player");
+    }
+    
+    return false;
+}
+
+protected virtual Vector3 GetShootPosition()
+{
+    if (shootPoint != null)
+    {
+        return shootPoint.position;
+    }
+    
+    // Posición por defecto
+    return transform.position + Vector3.up * 1.5f + transform.forward * 0.5f;
+}
 
    protected virtual void DamagedBehavior()
 {
@@ -998,7 +1160,7 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
     
     if (enableStateDebug && Time.frameCount % 60 == 0)
     {
-        Debug.Log($"💢 {enemyConfig.enemyName} en Damaged - Tiempo: {damageTimer:F1}/2.0s");
+//        Debug.Log($"💢 {enemyConfig.enemyName} en Damaged - Tiempo: {damageTimer:F1}/2.0s");
     }
 }
 protected virtual void PatrolBehavior()

@@ -81,6 +81,9 @@ public class TPMovement_Controller : MonoBehaviour
     public TextMeshProUGUI magazinesText;
     public GameObject reloadIndicator;
 
+    [Header("Pause Reference")]
+    public PauseMenu pauseMenu;
+
     [Header("Input System")]
     public InputActionReference movementAction;
     public InputActionReference sprintAction;
@@ -274,6 +277,17 @@ public class TPMovement_Controller : MonoBehaviour
 
     private void Update()
     {
+         if (IsGamePaused()) 
+    {
+        // Opcional: Detener cualquier movimiento residual
+        if (controller != null && controller.enabled)
+        {
+            currentVelocity = Vector3.zero;
+            verticalVelocity = Vector3.zero;
+        }
+        return;
+    }
+
         if (isDead) return;
         HandleStamina();
         GroundedCheck();
@@ -305,6 +319,14 @@ public class TPMovement_Controller : MonoBehaviour
             // Debug.Log("❌ En el aire");
         }
     }
+
+    private void FixedUpdate()
+{
+    // ✅ VERIFICAR SI EL JUEGO ESTÁ EN PAUSA
+    if (IsGamePaused()) return;
+    
+    // Tu código FixedUpdate existente...
+}
 
     private void Move()
     {
@@ -695,6 +717,8 @@ public class TPMovement_Controller : MonoBehaviour
     // SHOOTING METHODS
     private void TryToShoot()
 {
+    if (IsGamePaused()) return;
+
     // ✅ VALIDAR QUE EL OBJETO NO ESTÉ DESTRUIDO
     if (this == null || !isActiveAndEnabled) return;
     
@@ -1237,5 +1261,47 @@ private IEnumerator RestartSceneCoroutine()
     StopAllCoroutines();
     
 //    Debug.Log("🧹 TPMovement_Controller destruido - Callbacks limpiados");
+}
+
+public void AddMag()
+{
+    currentMagazines++;
+    UpdateAmmoUI();
+    Debug.Log($"➕ Cargador añadido. Total: {currentMagazines}");
+}
+
+// ✅ MÉTODO PARA CURAR (ya debería existir)
+public void RegenHeal(float healAmount)
+{
+    currentHealth += healAmount;
+    currentHealth = Mathf.Min(currentHealth, maxHealth);
+    UpdateHealthUI();
+    Debug.Log($"❤️ Salud restaurada: {currentHealth}/{maxHealth}");
+}
+
+private bool IsGamePaused()
+{
+    try
+    {
+        // ✅ USAR EL SINGLETON EN LUGAR DE FindObjectOfType
+        return PauseMenu.IsPaused() || Time.timeScale < 0.1f;
+    }
+    catch (System.Exception e)
+    {
+        Debug.LogWarning($"⚠️ Error verificando estado de pausa: {e.Message}");
+        return false;
+    }
+}
+
+private PauseMenu _cachedPauseMenu;
+
+// ✅ NUEVO: Propiedad para cachear la referencia de manera segura
+private PauseMenu GetPauseMenu()
+{
+    if (_cachedPauseMenu == null)
+    {
+        _cachedPauseMenu = FindObjectOfType<PauseMenu>();
+    }
+    return _cachedPauseMenu;
 }
 }
