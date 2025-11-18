@@ -1162,7 +1162,7 @@ private IEnumerator RestartSceneWithCleanup()
 {
     if (!isDead) return;
 
-    Debug.Log("🔄 Reapareciendo jugador...");
+//    Debug.Log("🔄 Reapareciendo jugador...");
 
     // ✅ RESTAURAR todos los valores
     currentHealth = maxHealth;
@@ -1199,7 +1199,7 @@ private IEnumerator RestartSceneWithCleanup()
     UpdateAmmoUI();
     HideDeathMessage(); // ✅ NOMBRE CORREGIDO
 
-    Debug.Log("✅ Jugador reaparecido - Valores restaurados");
+//    Debug.Log("✅ Jugador reaparecido - Valores restaurados");
 }
 
    private void RestartScene()

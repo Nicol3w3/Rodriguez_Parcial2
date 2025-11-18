@@ -33,51 +33,73 @@ public class SurveillanceCameraController : AIController
     private CameraFieldOfViewAdapter fovAdapter;
 
     protected override void Start()
+{
+    if (enemyConfig is SurveillanceCameraConfigData)
     {
-        if (enemyConfig is SurveillanceCameraConfigData)
-        {
-            cameraConfig = (SurveillanceCameraConfigData)enemyConfig;
-        }
-        else
-        {
-            Debug.LogError("SurveillanceCameraController requiere SurveillanceCameraConfigData!");
-            return;
-        }
-
-        SetupRigidbody();
-        SetupDamageCollider();
-        
-        // ✅ GUARDAR POSICIÓN INICIAL ANTES del base.Start()
-        SaveInitialTransform();
-
-        base.Start();
-        
-        FindCameraReferences();
-        SetupCameraFieldOfView();
-        
-        // ✅ GUARDAR ROTACIÓN INICIAL DEL PIVOT
-        initialPivotRotation = pivotPoint != null ? pivotPoint.rotation : transform.rotation;
-        rotationDirection = cameraConfig.rotateClockwise ? 1f : -1f;
-        
-        cameraRenderer = GetComponent<Renderer>();
-        
-        SetupVisuals();
-        SetupAudio();
+        cameraConfig = (SurveillanceCameraConfigData)enemyConfig;
     }
+    else
+    {
+        Debug.LogError("SurveillanceCameraController requiere SurveillanceCameraConfigData!");
+        return;
+    }
+
+    SetupRigidbody();
+    SetupDamageCollider();
+    
+    // ✅ GUARDAR POSICIÓN INICIAL ANTES del base.Start()
+    SaveInitialTransform();
+
+    base.Start();
+    
+    FindCameraReferences();
+    SetupCameraFieldOfView();
+    
+    // ✅ CONFIGURAR ROTACIÓN INICIAL CORRECTAMENTE
+    rotationDirection = cameraConfig.rotateClockwise ? 1f : -1f;
+    
+    // ✅ SI NO HAY ROTACIÓN INICIAL, CONFIGURAR DESDE CERO
+    if (Mathf.Abs(currentRotation) < 0.1f)
+    {
+        currentRotation = 0f;
+    }
+    
+    cameraRenderer = GetComponent<Renderer>();
+    
+    SetupVisuals();
+    SetupAudio();
+    
+    if (enableStateDebug)
+    {
+//        Debug.Log($"📷 Cámara iniciada - Rotación: {currentRotation}, Dirección: {rotationDirection}");
+    }
+}
 
      protected override void SaveInitialTransform()
+{
+    initialPosition = transform.position;
+    initialRotation = transform.rotation;
+    initialState = GetDefaultState();
+    
+    // ✅ GUARDAR ROTACIÓN ACTUAL DE LA CÁMARA
+    initialCameraRotation = currentRotation;
+    initialCameraState = cameraState;
+    
+    // ✅ GUARDAR ROTACIÓN INICIAL DEL PIVOT
+    if (pivotPoint != null)
     {
-        initialPosition = transform.position;
-        initialRotation = transform.rotation;
-        initialState = GetDefaultState();
-        initialCameraRotation = currentRotation;
-        initialCameraState = CameraState.Scanning;
-        
-        if (enableStateDebug)
-        {
-//            Debug.Log($"💾 Cámara guardó posición inicial: {initialPosition}");
-        }
+        initialPivotRotation = pivotPoint.rotation;
     }
+    else
+    {
+        initialPivotRotation = initialRotation;
+    }
+    
+    if (enableStateDebug)
+    {
+        //Debug.Log($"💾 Cámara guardó - Pos: {initialPosition}, Rot: {initialCameraRotation}, PivotRot: {initialPivotRotation}");
+    }
+}
 
 private void SetupCameraFieldOfView()
 {
@@ -420,6 +442,12 @@ private void SetupRigidbody()
 
     protected override void IdleBehavior()
 {
+    // ✅ Asegurarse de que la cámara esté en estado Scanning cuando está en Idle
+    if (cameraState != CameraState.Scanning && !isDestroyed)
+    {
+        SetCameraState(CameraState.Scanning);
+    }
+
     if (cameraState != CameraState.Scanning || isDestroyed) return;
 
     if (isPaused)
@@ -446,7 +474,7 @@ private void SetupRigidbody()
     // ✅ APLICAR ROTACIÓN AL PIVOT POINT
     if (pivotPoint != null)
     {
-        pivotPoint.rotation = initialRotation * Quaternion.Euler(0, currentRotation, 0);
+        pivotPoint.rotation = initialPivotRotation * Quaternion.Euler(0, currentRotation, 0);
     }
     else
     {
@@ -683,28 +711,57 @@ private bool IsSoldier(AIController enemy)
     // ✅ LLAMAR AL BASE PRIMERO para restaurar posición y estado básico
     base.Revive();
     
-    // ✅ COMPORTAMIENTO ESPECÍFICO DE CÁMARA
+    // ✅ COMPORTAMIENTO ESPECÍFICO DE CÁMARA - RESTAURAR ROTACIÓN COMPLETA
     currentRotation = initialCameraRotation;
+    cameraState = initialCameraState;
     ChangeState(initialState);
     isDestroyed = false;
     damageTimer = 0f;
+    isPaused = false;
+    pauseTimer = 0f;
     
+    // ✅ RESTAURAR ROTACIÓN DEL PIVOT POINT EXACTAMENTE COMO AL INICIO
     if (pivotPoint != null)
     {
-        pivotPoint.rotation = initialPivotRotation * Quaternion.Euler(0, currentRotation, 0);
+        pivotPoint.rotation = initialPivotRotation;
+        
+        // ✅ APLICAR LA ROTACIÓN INICIAL SI EXISTE
+        if (Mathf.Abs(initialCameraRotation) > 0.1f)
+        {
+            pivotPoint.rotation = initialPivotRotation * Quaternion.Euler(0, initialCameraRotation, 0);
+        }
     }
     
+    // ✅ RESTAURAR DIRECCIÓN DE ROTACIÓN
+    rotationDirection = cameraConfig.rotateClockwise ? 1f : -1f;
+    
+    // ✅ RESTAURAR COMPONENTES VISUALES
     if (spotLight != null)
     {
         spotLight.color = cameraConfig.neutralColor;
+        spotLight.intensity = 1f;
+        spotLight.enabled = true;
     }
     
     if (laserSight != null)
         laserSight.enabled = cameraConfig.useLaserSight;
     
+    // ✅ REACTIVAR COMPONENTES FÍSICOS
+    if (damageCollider != null)
+        damageCollider.enabled = true;
+    
+    if (cameraRenderer != null)
+        cameraRenderer.enabled = true;
+    
+    // ✅ REINICIAR EL COMPORTAMIENTO DE SCANNING
+    if (cameraFOV != null)
+    {
+        cameraFOV.canSeePlayer = false;
+    }
+    
     if (enableStateDebug)
     {
-//        Debug.Log($"📷 {enemyConfig.enemyName} revivida - Estado de cámara restaurado");
+//        Debug.Log($"📷 {enemyConfig.enemyName} revivida - Rotación: {currentRotation}, Estado: {cameraState}");
     }
 }
 
@@ -734,4 +791,14 @@ protected override void RotateTowardsTarget(Vector3 targetPosition)
             base.RotateTowardsTarget(targetPosition);
         }
     }
+    protected override Vector3 GetRespawnPosition()
+{
+    return initialPosition;
+}
+
+protected override Quaternion GetRespawnRotation()
+{
+    return initialRotation;
+}
+
 }

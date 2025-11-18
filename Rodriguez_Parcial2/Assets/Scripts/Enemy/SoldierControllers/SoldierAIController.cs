@@ -5,7 +5,8 @@ public class SoldierAIController : AIController
 {
     private float nextFireTime = 0f;
     private bool canShoot = true;
-     private EnemyShootingSystem shootingSystem;
+    private EnemyShootingSystem shootingSystem;
+    private bool shootingSystemInitialized = false;
 
     private Vector3 initialPosition;
     private Quaternion initialRotation;
@@ -24,7 +25,7 @@ public class SoldierAIController : AIController
         {
             soldierConfig = (SoldierConfigData)enemyConfig;
             
-            // ✅ CONFIGURAR DISPARO DESDE SOLDIER CONFIG
+            // CONFIGURAR DISPARO DESDE SOLDIER CONFIG
             canShoot = soldierConfig.canShoot;
             shootRange = soldierConfig.shootRange;
             fireRate = soldierConfig.fireRate;
@@ -42,26 +43,66 @@ public class SoldierAIController : AIController
             return;
         }
 
-        base.Start(); // ✅ LLAMAR AL BASE DESPUÉS de configurar las variables
+        base.Start();
+
+}
         
-        if (enableStateDebug)
-        {
-            Debug.Log($"🔫 Soldier configurado - CanShoot: {canShoot}, FireRate: {fireRate}");
-        }
+        // ✅ FORZAR INICIALIZACIÓN DEL SISTEMA DE DISPARO
+private void ForceInitializeShootingSystem()
+{
+    if (!canShoot) return;
+    
+    shootingSystem = GetComponent<EnemyShootingSystem>();
+    if (shootingSystem == null)
+    {
+        shootingSystem = gameObject.AddComponent<EnemyShootingSystem>();
+        Debug.Log($"🔄 Creando EnemyShootingSystem para {enemyConfig.enemyName}");
     }
 
+    // ✅ CONFIGURAR MANUALMENTE TODAS LAS PROPIEDADES
+    shootingSystem.SetShootingEnabled(true);
+    shootingSystem.SetFireRate(fireRate);
+    shootingSystem.SetShootRange(shootRange);
+    shootingSystem.SetBulletDamage(bulletDamage);
+    shootingSystem.SetProjectilePrefab(projectilePrefab);
+    
+    if (shootPoint != null)
+    {
+        shootingSystem.SetShootPoint(shootPoint);
+    }
+
+    // ✅ CONFIGURAR EL TARGET DEL PLAYER
+    if (fov != null && fov.playerRef != null)
+    {
+        shootingSystem.SetPlayerTarget(fov.playerRef);
+    }
+
+    shootingSystemInitialized = true;
+    
+    if (enableStateDebug)
+    {
+        Debug.Log($"✅ Sistema de disparo forzado - Ready: {shootingSystem != null}");
+    }
+}
 
      protected override void SaveInitialTransform()
+{
+    initialPosition = transform.position;
+    initialRotation = transform.rotation;
+    initialState = GetDefaultState();
+    
+    // ✅ GUARDAR PATROL POINTS INICIALES SI EXISTEN
+    if (patrolPoints != null && patrolPoints.Count > 0)
     {
-        initialPosition = transform.position;
-        initialRotation = transform.rotation;
-        initialState = GetDefaultState();
-        
-        if (enableStateDebug)
-        {
-            Debug.Log($"💾 Soldier guardó posición inicial: {initialPosition}");
-        }
+        initialPatrolPoints = patrolPoints.ToArray();
+        initialPatrolIndex = currentPatrolIndex;
     }
+    
+    if (enableStateDebug)
+    {
+        Debug.Log($"💾 Soldier guardó posición inicial: {initialPosition}, PatrolPoints: {patrolPoints?.Count ?? 0}");
+    }
+}
 
    protected virtual void InitializeShootingSystem()
     {
@@ -109,18 +150,23 @@ public class SoldierAIController : AIController
         {
             lastKnownPlayerPosition = fov.playerRef.transform.position;
             
-            // ✅ FORZAR TRANSICIÓN A CHASING SI VE AL JUGADOR
-            if (fov.canSeePlayer && currentState != AIState.Chasing)
+            // ✅ FORZAR TRANSICIÓN INMEDIATA A CHASING SI VE AL JUGADOR
+            if (fov.canSeePlayer)
             {
-                ChangeState(AIState.Chasing);
-                
-                if (enableStateDebug)
+                if (currentState != AIState.Chasing)
                 {
-                    Debug.Log($"🚨 Soldier pasó de Alert a Chasing - Activando disparos");
+                    ChangeState(AIState.Chasing);
+                }
+                
+                // ✅ INCLUSO EN ALERT, PREPARAR EL SISTEMA DE DISPARO
+                if (shootingSystem == null)
+                {
+                    ForceInitializeShootingSystem();
                 }
             }
         }
 
+        // Comportamiento normal de alerta
         Vector3 moveDirection = GetMovementDirectionToPlayer();
         RotateTowardsTarget(lastKnownPlayerPosition);
         
@@ -135,7 +181,7 @@ public class SoldierAIController : AIController
     {
         UpdateStateDisplays();
         HandleStateTimers();
-        HandleShooting(); // ✅ MANTENER en Update
+        EmergencyShootingFix();
     }
 
      protected override void ChaseBehavior()
@@ -205,23 +251,6 @@ private Vector3 GetSoldierAvoidanceDirection(Vector3 desiredDirection, Vector3 t
         }
     }
 
-    protected override void HandleShooting()
-    {
-        if (!canShoot || soldierConfig == null || !soldierConfig.canShoot) return;
-        if (shootingSystem == null) return;
-        
-        // ✅ SOLDIERS DISPARAN SOLO EN CHASING (más restrictivo)
-        if (currentState == AIState.Chasing)
-        {
-            shootingSystem.TryShootAtPlayer();
-            
-            // Debug específico para soldiers
-            if (enableStateDebug && Time.frameCount % 60 == 0)
-            {
-                Debug.Log($"🔫 Soldier en Chasing - Llamando TryShootAtPlayer");
-            }
-        }
-    }
 
 
     // ✅ NUEVO MÉTODO: Verificar línea de visión
@@ -403,4 +432,115 @@ private void ForceShootingInChasing()
             Debug.Log($"🎯 Soldier en Chasing - Intentando disparar");
         }
     }
+
+    protected override void ChangeState(AIState newState)
+    {
+        AIState previousState = currentState;
+        base.ChangeState(newState);
+
+        // ✅ CUANDO PASA DE ALERT A CHASING, FORZAR DISPARO
+        if (previousState == AIState.Alert && newState == AIState.Chasing)
+        {
+            OnEnterChasingState();
+        }
+    }
+
+    private void OnEnterChasingState()
+    {
+        if (enableStateDebug)
+        {
+            Debug.Log($"🎯 Soldier entrando en Chasing - Activando sistema de disparo");
+        }
+
+        // ✅ FORZAR REINICIALIZACIÓN DEL SISTEMA DE DISPARO
+        if (shootingSystem == null)
+        {
+            ForceInitializeShootingSystem();
+        }
+        else
+        {
+            // ✅ REACTIVAR EL SISTEMA EXISTENTE
+            shootingSystem.SetShootingEnabled(true);
+            shootingSystem.nextFireTime = Time.time; // Resetear el timer de disparo
+        }
+
+        // ✅ DEBUG PARA CONFIRMAR QUE ESTÁ LISTO PARA DISPARAR
+        if (enableStateDebug)
+        {
+            Debug.Log($"🔫 Sistema de disparo listo - CanShoot: {shootingSystem?.canShoot}, Player: {shootingSystem?.player != null}");
+        }
+    }
+
+    private void EmergencyShootingFix()
+{
+    if (currentState == AIState.Chasing && shootingSystem != null)
+    {
+        // Verificar condiciones manualmente
+        if (fov != null && fov.canSeePlayer && fov.playerRef != null)
+        {
+            float distance = Vector3.Distance(transform.position, fov.playerRef.transform.position);
+            if (distance <= shootRange)
+            {
+                // Llamar al método interno de shootingSystem si TryShootAtPlayer no funciona
+                shootingSystem.TryShootAtPlayer();
+                
+                // Debug de emergencia
+                if (enableStateDebug && Time.frameCount % 60 == 0)
+                {
+                    Debug.Log($"🚨 EMERGENCY SHOOTING - Distance: {distance}, InRange: {distance <= shootRange}");
+                }
+            }
+        }
+    }
+}
+
+protected override Vector3 GetRespawnPosition()
+{
+    // Si tiene patrol points, usar el primero
+    if (usePatrol && patrolPoints != null && patrolPoints.Count > 0)
+    {
+        return patrolPoints[0];
+    }
+    
+    // Si no tiene patrol, usar posición inicial
+    return base.GetRespawnPosition();
+}
+
+protected override Quaternion GetRespawnRotation()
+{
+    // Si tiene patrol points, rotar hacia el segundo waypoint (si existe)
+    if (usePatrol && patrolPoints != null && patrolPoints.Count > 1)
+    {
+        Vector3 directionToNextPoint = (patrolPoints[1] - patrolPoints[0]).normalized;
+        if (directionToNextPoint != Vector3.zero)
+        {
+            return Quaternion.LookRotation(directionToNextPoint);
+        }
+    }
+    
+    // Si no, usar rotación inicial
+    return base.GetRespawnRotation();
+}
+
+public override void Revive()
+{
+    base.Revive();
+    
+    // ✅ RESET ESPECÍFICO PARA SOLDIERS
+    currentPatrolIndex = 0;
+    isWaitingAtPoint = false;
+    patrolWaitTimer = 0f;
+    
+    // ✅ REINICIALIZAR SISTEMA DE DISPARO
+    if (canShoot && shootingSystem != null)
+    {
+        shootingSystem.SetShootingEnabled(true);
+        shootingSystem.nextFireTime = Time.time;
+    }
+    
+    if (enableStateDebug)
+    {
+        Debug.Log($"🎖️ Soldier revivido - PatrolIndex: {currentPatrolIndex}, Position: {transform.position}");
+    }
+}
 }

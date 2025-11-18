@@ -3,7 +3,7 @@ using UnityEngine;
 public class EnemyShootingSystem : MonoBehaviour
 {
     [Header("Shooting Configuration")]
-    [SerializeField] private bool canShoot = true;
+    [SerializeField] public bool canShoot = true;
     [SerializeField] private float shootRange = 15f;
     [SerializeField] private float fireRate = 1.5f;
     [SerializeField] private float bulletDamage = 20f;
@@ -15,7 +15,7 @@ public class EnemyShootingSystem : MonoBehaviour
 
     [Header("Target Settings")]
     [SerializeField] private TargetAcquisitionType targetType = TargetAcquisitionType.ByTag;
-    [SerializeField] private GameObject playerTarget; // Para asignar manualmente
+    [SerializeField] public GameObject playerTarget; // Para asignar manualmente
     [SerializeField] private string playerTag = "Player";
     
     [Header("Visual Effects")]
@@ -27,9 +27,9 @@ public class EnemyShootingSystem : MonoBehaviour
 
     
     
-    private float nextFireTime = 0f;
+    public float nextFireTime = 0f;
     private AudioSource audioSource;
-    private GameObject player;
+    public GameObject player;
 
      public enum TargetAcquisitionType
     {

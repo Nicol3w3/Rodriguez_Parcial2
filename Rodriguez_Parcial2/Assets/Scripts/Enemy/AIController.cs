@@ -14,7 +14,7 @@ public class AIController : MonoBehaviour
     public float bulletDamage = 20f;
     public GameObject projectilePrefab;
     public Transform shootPoint;
-    protected float nextFireTime = 0f;
+    public float nextFireTime = 0f;
     
     [Header("Ground Detection")]
     public float groundCheckDistance = 0.1f;
@@ -25,7 +25,7 @@ public class AIController : MonoBehaviour
     protected Rigidbody rb;
     protected FieldOfView fov;
     protected Collider damageCollider;
-    protected EnemyShootingSystem shootingSystem;
+    public EnemyShootingSystem shootingSystem;
 
     [Header("Debug Info - Read Only")]
     [SerializeField] private string currentStateDisplay;
@@ -120,14 +120,20 @@ public class AIController : MonoBehaviour
 
 
 
- protected virtual void SaveInitialTransform()
+protected virtual void SaveInitialTransform()
+{
+    initialPosition = transform.position;
+    initialRotation = transform.rotation;
+    initialState = GetDefaultState();
+    
+    if (enableStateDebug)
     {
-        // Este método será overrideado por las clases hijas
-        // No guardamos nada aquí en el base para evitar conflictos
+ //       Debug.Log($"💾 {enemyConfig.enemyName} guardó posición inicial: {initialPosition}");
     }
+}
 
     // MÉTODO CLAVE: Cambiar estado con debug
-   protected virtual void ChangeState(AIState newState)
+  protected virtual void ChangeState(AIState newState)
 {
     if (currentState == newState) return;
 
@@ -167,6 +173,15 @@ public class AIController : MonoBehaviour
             
         case AIState.Chasing:
             chaseTimer = 0f;
+            // ✅ NUEVO: Forzar inicialización del sistema de disparo al entrar en Chasing
+            if (canShoot && shootingSystem == null)
+            {
+                InitializeShootingSystem();
+            }
+            else if (canShoot && shootingSystem != null)
+            {
+                shootingSystem.SetShootingEnabled(true);
+            }
             break;
             
         case AIState.Idle:
@@ -327,7 +342,7 @@ public class AIController : MonoBehaviour
                 
                 if (enableStateDebug)
                 {
-                    Debug.Log($"🎯 {enemyConfig.enemyName} vio al jugador - Pasando de Alert a Chasing");
+//                    Debug.Log($"🎯 {enemyConfig.enemyName} vio al jugador - Pasando de Alert a Chasing");
                 }
             }
             
@@ -791,7 +806,7 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
         
         if (enableStateDebug)
         {
-            Debug.Log($"🚨 {enemyConfig.enemyName} fue dañado nuevamente - Entrando directamente a Alert");
+//            Debug.Log($"🚨 {enemyConfig.enemyName} fue dañado nuevamente - Entrando directamente a Alert");
         }
     }
 
@@ -840,35 +855,51 @@ protected virtual Vector3 GetAvoidanceAdjustedDirection(Vector3 desiredDirection
     }
 
     public virtual void Revive()
+{
+    // ✅ DETERMINAR POSICIÓN DE RESPAWN SEGÚN EL TIPO DE ENEMIGO
+    Vector3 respawnPosition = GetRespawnPosition();
+    Quaternion respawnRotation = GetRespawnRotation();
+    
+    transform.position = respawnPosition;
+    transform.rotation = respawnRotation;
+    
+    ChangeState(initialState);
+    currentHealth = enemyConfig.maxHealth;
+    isChasing = false;
+    lastKnownPlayerPosition = Vector3.zero;
+    alertPosition = Vector3.zero;
+    stateBeforeAlert = initialState;
+    isFirstDamage = true;
+    alertTimer = 0f;
+    searchTimer = 0f;
+    damageTimer = 0f;
+    
+    if (fov != null)
     {
-        transform.position = initialPosition;
-        transform.rotation = initialRotation;
-        
-        ChangeState(initialState);
-        currentHealth = enemyConfig.maxHealth;
-        isChasing = false;
-        lastKnownPlayerPosition = Vector3.zero;
-        alertPosition = Vector3.zero;
-        stateBeforeAlert = initialState;
-        isFirstDamage = true;
-        alertTimer = 0f;
-        searchTimer = 0f;
-        damageTimer = 0f;
-        
-        if (fov != null)
-        {
-            fov.canSeePlayer = false;
-        }
-        
-        SetEnemyVisible(true);
-        OnHealthChanged?.Invoke(1f);
-        UpdateStateDisplays();
-        
-        if (enableStateDebug)
-        {
-            Debug.Log($"🔄 {enemyConfig.enemyName} revivido en posición inicial");
-        }
+        fov.canSeePlayer = false;
     }
+    
+    SetEnemyVisible(true);
+    OnHealthChanged?.Invoke(1f);
+    UpdateStateDisplays();
+    
+    if (enableStateDebug)
+    {
+//        Debug.Log($"🔄 {enemyConfig.enemyName} revivido en posición: {respawnPosition}");
+    }
+}
+
+protected virtual Vector3 GetRespawnPosition()
+{
+    // Por defecto, usar posición inicial
+    return initialPosition;
+}
+
+// ✅ NUEVO MÉTODO: Obtener rotación de respawn
+protected virtual Quaternion GetRespawnRotation()
+{
+    return initialRotation;
+}
 
     protected virtual void SetEnemyVisible(bool visible)
     {
@@ -987,25 +1018,29 @@ protected virtual void InitializeShootingSystem()
         }
     }
 
-    // ✅ MODIFICAR HandleShooting para usar EnemyShootingSystem
-    protected virtual void HandleShooting()
+   protected virtual void HandleShooting()
+{
+    if (!canShoot) return;
+    if (shootingSystem == null) 
     {
-        if (!canShoot) return;
+        // ✅ INTENTAR INICIALIZAR SI ES NULL
+        InitializeShootingSystem();
         if (shootingSystem == null) return;
+    }
+    
+    // ✅ PERMITIR DISPARAR en Chasing Y Alert (si tiene línea de visión)
+    if (currentState == AIState.Chasing || 
+        (currentState == AIState.Alert && fov != null && fov.canSeePlayer))
+    {
+        shootingSystem.TryShootAtPlayer();
         
-        // ✅ PERMITIR DISPARAR en Chasing Y Alert (si tiene línea de visión)
-        if (currentState == AIState.Chasing || 
-            (currentState == AIState.Alert && fov != null && fov.canSeePlayer))
+        // Debug para confirmar que se está intentando disparar
+        if (enableStateDebug && Time.frameCount % 90 == 0)
         {
-            shootingSystem.TryShootAtPlayer();
-            
-            // Debug para confirmar que se está intentando disparar
-            if (enableStateDebug && Time.frameCount % 90 == 0)
-            {
-//                Debug.Log($"🎯 {enemyConfig.enemyName} - Intentando disparar en estado: {currentState}");
-            }
+//            Debug.Log($"🎯 {enemyConfig.enemyName} - Intentando disparar en estado: {currentState}");
         }
     }
+}
 
 protected virtual void TryShootAtPlayer()
 {
