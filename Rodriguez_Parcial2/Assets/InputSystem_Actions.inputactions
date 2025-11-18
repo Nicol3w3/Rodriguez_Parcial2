@@ -595,17 +595,6 @@
                 },
                 {
                     "name": "",
-                    "id": "cb47857a-6e33-436c-937a-4ff237912b32",
-                    "path": "",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "",
-                    "action": "RespawnPlayer",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
                     "id": "da21d3a8-7db5-47a5-afdf-3747b55a8c3a",
                     "path": "<Keyboard>/f1",
                     "interactions": "",

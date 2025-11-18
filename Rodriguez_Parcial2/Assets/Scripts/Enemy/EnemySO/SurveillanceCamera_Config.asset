@@ -20,8 +20,8 @@ MonoBehaviour:
   chaseSpeed: 5
   rotationSpeed: 5
   canMove: 1
-  detectionRadius: 10
-  detectionAngle: 90
+  detectionRadius: 5
+  detectionAngle: 60
   targetMask:
     serializedVersion: 2
     m_Bits: 64

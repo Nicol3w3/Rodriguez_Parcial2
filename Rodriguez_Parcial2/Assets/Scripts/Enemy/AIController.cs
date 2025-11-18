@@ -477,7 +477,7 @@ private bool IsSoldier(AIController enemy)
         
         if (enableStateDebug)
         {
-            Debug.Log($"📢 {enemyConfig.enemyName} recibió alerta - Posición: {alertPosition}");
+//            Debug.Log($"📢 {enemyConfig.enemyName} recibió alerta - Posición: {alertPosition}");
         }
     }
 }

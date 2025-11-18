@@ -19,6 +19,11 @@ public class TPMovement_Controller : MonoBehaviour
     private float originalHeight;
     private Vector3 originalCenter;
     private bool isCrouching = false;
+
+    [Header("Crouch Obstacle Detection")]
+    public LayerMask obstacleMask = 1; // Default layer
+    public float obstacleCheckDistance = 0.5f;
+    public float obstacleCheckRadius = 0.4f;
     
     [Header("Visual Crouch")]
     public Transform playerVisual;
@@ -102,6 +107,9 @@ public class TPMovement_Controller : MonoBehaviour
     public Transform spawnPoint;
     public InputActionReference respawnAction;
     public InputActionReference restartSceneAction;
+
+    [Header("Debug Settings")]
+    public bool enableStateDebug = false;
     
     // Variables de estado
     private bool isDead = false;
@@ -147,6 +155,12 @@ public class TPMovement_Controller : MonoBehaviour
         controller = GetComponent<CharacterController>();
         originalHeight = controller.height;
         originalCenter = controller.center;
+        
+        // ✅ CONFIGURAR MÁSCARA DE OBSTÁCULOS (Walls)
+        if (obstacleMask == 1) // Si está en default
+        {
+            obstacleMask = LayerMask.GetMask("Default", "Walls");
+        }
         
         if (playerVisual == null)
         {
@@ -295,6 +309,7 @@ public class TPMovement_Controller : MonoBehaviour
     JumpAndGravity();
     Move();
     HandleCrouch();
+    ForceCrouchIfObstructed();
 }
 
      private void GroundedCheck()
@@ -423,17 +438,17 @@ public class TPMovement_Controller : MonoBehaviour
    // ✅ CORREGIDO: Manejar agachado con ajuste visual
      private void HandleCrouch()
     {
+        // Transición suave del CharacterController
         float targetHeight = isCrouching ? crouchHeight : originalHeight;
         Vector3 targetCenter = isCrouching ? new Vector3(0, -crouchHeight/2, 0) : originalCenter;
         
-        // Transición suave del CharacterController
         if (Mathf.Abs(controller.height - targetHeight) > 0.01f)
         {
             controller.height = Mathf.Lerp(controller.height, targetHeight, crouchTransitionSpeed * Time.deltaTime);
             controller.center = Vector3.Lerp(controller.center, targetCenter, crouchTransitionSpeed * Time.deltaTime);
         }
 
-        // ✅ CORREGIDO: Transición visual MÁS SIMPLE Y DIRECTA
+        // ✅ CORREGIDO: Transición visual con verificación de obstáculos
         if (playerVisual != null)
         {
             Vector3 targetVisualScale = isCrouching ? 
@@ -444,15 +459,9 @@ public class TPMovement_Controller : MonoBehaviour
                 new Vector3(originalVisualPosition.x, originalVisualPosition.y - (originalVisualScale.y - targetVisualScale.y) * 0.5f, originalVisualPosition.z) : 
                 originalVisualPosition;
 
-            // Aplicar cambios directamente con Lerp para suavidad
+            // Aplicar cambios con Lerp
             playerVisual.localScale = Vector3.Lerp(playerVisual.localScale, targetVisualScale, crouchTransitionSpeed * Time.deltaTime);
             playerVisual.localPosition = Vector3.Lerp(playerVisual.localPosition, targetVisualPosition, crouchTransitionSpeed * Time.deltaTime);
-
-            // Debug visual
-            if (isCrouching && Time.frameCount % 30 == 0)
-            {
-//                Debug.Log($"🧎 Escala: {playerVisual.localScale} | Posición: {playerVisual.localPosition}");
-            }
         }
     }
 
@@ -486,8 +495,27 @@ public class TPMovement_Controller : MonoBehaviour
 
     private void OnCrouchPerformed(InputAction.CallbackContext context)
     {
-        isCrouching = !isCrouching;
-//        Debug.Log($"🧎 {(isCrouching ? "Agachado" : "De pie")}");
+        if (isCrouching)
+        {
+            // ✅ VERIFICAR SI PUEDE LEVANTARSE ANTES DE HACERLO
+            if (CanStandUp())
+            {
+                isCrouching = false;
+//                Debug.Log($"🧎→🧍 Jugador se levanta");
+            }
+            else
+            {
+//                Debug.Log($"🚫 No puede levantarse - Hay obstáculos arriba");
+                // Mantener agachado
+                isCrouching = true;
+            }
+        }
+        else
+        {
+            // Siempre puede agacharse
+            isCrouching = true;
+            //Debug.Log($"🧍→🧎 Jugador se agacha");
+        }
     }
 
     // ✅ NUEVO: Recargar con la tecla R
@@ -1017,6 +1045,14 @@ private Vector3 GetPreciseShootDirection()
     {
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(groundCheck.position, groundDistance);
+
+        if (isCrouching)
+        {
+            Vector3 checkPosition = transform.position + Vector3.up * (crouchHeight + 0.1f);
+            Gizmos.color = CanStandUp() ? Color.green : Color.red;
+            Gizmos.DrawWireSphere(checkPosition, obstacleCheckRadius);
+            Gizmos.DrawRay(checkPosition, Vector3.up * obstacleCheckDistance);
+        }
     }
 
      private void OnRespawnPerformed(InputAction.CallbackContext context)
@@ -1297,4 +1333,52 @@ private PauseMenu GetPauseMenu()
     }
     return _cachedPauseMenu;
 }
+
+private bool CanStandUp()
+    {
+        if (!isCrouching) return true;
+        
+        // Calcular posición de verificación (arriba del jugador)
+        Vector3 checkPosition = transform.position + Vector3.up * (crouchHeight + 0.1f);
+        
+        // Realizar check de esfera para detectar obstáculos
+        bool hasObstacleAbove = Physics.CheckSphere(
+            checkPosition, 
+            obstacleCheckRadius, 
+            obstacleMask
+        );
+        
+        // Debug visual
+        Debug.DrawRay(checkPosition, Vector3.up * obstacleCheckDistance, 
+                     hasObstacleAbove ? Color.red : Color.green, 0.1f);
+        
+        if (hasObstacleAbove && enableStateDebug)
+        {
+            Debug.Log($"🚫 No puede levantarse - Obstáculo detectado arriba");
+        }
+        
+        return !hasObstacleAbove;
+    }
+
+    public void ForceCrouchIfObstructed()
+    {
+        if (!isCrouching && !CanStandUp())
+        {
+            isCrouching = true;
+            if (enableStateDebug)
+            {
+                Debug.Log($"🔄 Forzando agachado - Obstáculo detectado");
+            }
+        }
+    }
+
+    public bool IsCrouching()
+    {
+        return isCrouching;
+    }
+
+    public bool IsObstructedAbove()
+    {
+        return !CanStandUp();
+    }
 }
