@@ -117,6 +117,7 @@ public class TPMovement_Controller : MonoBehaviour
     private Quaternion initialRotation;
     private Vector3 initialVisualScale;
     private Vector3 initialVisualPosition;
+    private bool _blockRunAndJump = false;
 
     // Componentes
     private CharacterController controller;
@@ -411,29 +412,35 @@ public class TPMovement_Controller : MonoBehaviour
     }
 
     private float GetTargetSpeed()
+{
+    // ✅ BLOQUEO: Si está bloqueado, usar solo velocidad de caminata
+    if (_blockRunAndJump)
     {
-        float baseSpeed;
-        
-        if (isSprinting && currentStamina > 0 && movementInput.magnitude > 0.1f)
-        {
-            baseSpeed = sprintSpeed;
-        }
-        else if (movementInput.magnitude > 0.1f)
-        {
-            baseSpeed = isGrounded ? runSpeed : runSpeed * 0.8f;
-        }
-        else
-        {
-            baseSpeed = walkSpeed;
-        }
-        
-        if (isCrouching)
-        {
-            baseSpeed *= crouchSpeedMultiplier;
-        }
-        
-        return baseSpeed;
+        return walkSpeed * (isCrouching ? crouchSpeedMultiplier : 1f);
     }
+    
+    float baseSpeed;
+    
+    if (isSprinting && currentStamina > 0 && movementInput.magnitude > 0.1f)
+    {
+        baseSpeed = sprintSpeed;
+    }
+    else if (movementInput.magnitude > 0.1f)
+    {
+        baseSpeed = isGrounded ? runSpeed : runSpeed * 0.8f;
+    }
+    else
+    {
+        baseSpeed = walkSpeed;
+    }
+    
+    if (isCrouching)
+    {
+        baseSpeed *= crouchSpeedMultiplier;
+    }
+    
+    return baseSpeed;
+}
 
    // ✅ CORREGIDO: Manejar agachado con ajuste visual
      private void HandleCrouch()
@@ -600,57 +607,57 @@ public class TPMovement_Controller : MonoBehaviour
         }
     }
 
-     private void JumpAndGravity()
+    private void JumpAndGravity()
+{
+    if (isGrounded)
     {
-        if (isGrounded)
+        fallTimeoutDelta = fallTimeout;
+
+        // Resetear velocidad vertical cuando toca el suelo
+        if (verticalVelocity.y < 0f)
         {
-            fallTimeoutDelta = fallTimeout;
-
-            // Resetear velocidad vertical cuando toca el suelo
-            if (verticalVelocity.y < 0f)
-            {
-                verticalVelocity.y = -2f; // Pequeña fuerza hacia abajo para mantener contacto
-            }
-
-            // ✅ SALTO: Permitir saltar solo si está en suelo y no está agachado
-            if (jumpPressed && jumpTimeoutDelta <= 0f && !isCrouching)
-            {
-                verticalVelocity.y = Mathf.Sqrt(jumpHeight * -2f * Physics.gravity.y);
-                isJumping = true;
-                jumpTimeoutDelta = jumpTimeout;
-//                Debug.Log("🦘 Saltando!");
-            }
-
-            // Manejar timeout del salto
-            if (jumpTimeoutDelta >= 0f)
-            {
-                jumpTimeoutDelta -= Time.deltaTime;
-            }
+            verticalVelocity.y = -2f; // Pequeña fuerza hacia abajo para mantener contacto
         }
-        else
+
+        // ✅ SALTO: Permitir saltar solo si está en suelo, no está agachado y NO está bloqueado
+        if (jumpPressed && jumpTimeoutDelta <= 0f && !isCrouching && !_blockRunAndJump)
         {
-            // Resetear timeout del salto cuando está en el aire
+            verticalVelocity.y = Mathf.Sqrt(jumpHeight * -2f * Physics.gravity.y);
+            isJumping = true;
             jumpTimeoutDelta = jumpTimeout;
-
-            // Manejar timeout de caída
-            if (fallTimeoutDelta >= 0f)
-            {
-                fallTimeoutDelta -= Time.deltaTime;
-            }
-
-            // Resetear salto presionado
-            jumpPressed = false;
+//            Debug.Log("🦘 Saltando!");
         }
 
-        // Aplicar gravedad siempre que no esté en el suelo o esté saltando
-        if (!isGrounded || isJumping)
+        // Manejar timeout del salto
+        if (jumpTimeoutDelta >= 0f)
         {
-            verticalVelocity.y += Physics.gravity.y * gravityMultiplier * Time.deltaTime;
-            
-            // Limitar velocidad de caída máxima
-            verticalVelocity.y = Mathf.Max(verticalVelocity.y, -50f);
+            jumpTimeoutDelta -= Time.deltaTime;
         }
     }
+    else
+    {
+        // Resetear timeout del salto cuando está en el aire
+        jumpTimeoutDelta = jumpTimeout;
+
+        // Manejar timeout de caída
+        if (fallTimeoutDelta >= 0f)
+        {
+            fallTimeoutDelta -= Time.deltaTime;
+        }
+
+        // Resetear salto presionado
+        jumpPressed = false;
+    }
+
+    // Aplicar gravedad siempre que no esté en el suelo o esté saltando
+    if (!isGrounded || isJumping)
+    {
+        verticalVelocity.y += Physics.gravity.y * gravityMultiplier * Time.deltaTime;
+        
+        // Limitar velocidad de caída máxima
+        verticalVelocity.y = Mathf.Max(verticalVelocity.y, -50f);
+    }
+}
 
     private void HandleStamina()
     {
@@ -731,12 +738,15 @@ public class TPMovement_Controller : MonoBehaviour
     }
 
     private void OnSprintPerformed(InputAction.CallbackContext context)
+{
+    // ✅ BLOQUEO: No permitir sprint si está bloqueado
+    if (_blockRunAndJump) return;
+    
+    if (currentStamina > 0)
     {
-        if (currentStamina > 0)
-        {
-            isSprinting = true;
-        }
+        isSprinting = true;
     }
+}
 
     private void OnSprintCanceled(InputAction.CallbackContext context)
     {
@@ -1381,4 +1391,21 @@ private bool CanStandUp()
     {
         return !CanStandUp();
     }
+
+    public void BlockRunAndJump()
+{
+    _blockRunAndJump = true;
+    // Forzar dejar de correr si estaba corriendo
+    isSprinting = false;
+}
+
+public void UnblockRunAndJump()
+{
+    _blockRunAndJump = false;
+}
+
+public bool IsRunAndJumpBlocked()
+{
+    return _blockRunAndJump;
+}
 }
