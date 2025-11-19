@@ -42,12 +42,6 @@ public class EnemyProjectile : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        // Ignorar colisión con el dueño
-        if (other.gameObject == owner) return;
-        
-        // Ignorar colisión con otros enemigos
-        if (other.CompareTag("Enemy")) return;
-        
         // Verificar si es el jugador
         if (other.CompareTag("Player"))
         {
@@ -55,8 +49,15 @@ public class EnemyProjectile : MonoBehaviour
             if (player != null)
             {
                 player.TakeDamage(damage);
+                Destroy(gameObject);
             }
         }
+
+        // Ignorar colisión con el dueño
+        if (other.gameObject == owner) Destroy(gameObject);
+        
+        // Ignorar colisión con otros enemigos
+        if (other.CompareTag("Enemy")) Destroy(gameObject);
         
         // Efecto de impacto
         if (impactEffect != null)
