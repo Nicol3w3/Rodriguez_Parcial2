@@ -904,13 +904,8 @@ private Vector3 GetPreciseShootDirection()
     {
         if (isDead) return; // ✅ No recibir daño si ya está muerto
 
-        float healthBefore = currentHealth;
         currentHealth -= damage;
         currentHealth = Mathf.Max(currentHealth, 0f);
-
-        float actualDamage = healthBefore - currentHealth;
-        Debug.Log($"💥 Jugador recibió {actualDamage} de daño. Vida: {currentHealth}/{maxHealth}");
-
         UpdateHealthUI();
 
         if (currentHealth <= 0)

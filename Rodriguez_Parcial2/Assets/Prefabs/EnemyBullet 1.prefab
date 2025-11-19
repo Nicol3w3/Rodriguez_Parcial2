@@ -152,5 +152,4 @@ MonoBehaviour:
   speed: 30
   damage: 20
   maxLifetime: 3
-  safeDistance: 1.5
   impactEffect: {fileID: 0}
