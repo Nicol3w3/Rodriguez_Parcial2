@@ -117,7 +117,7 @@ public class TPMovement_Controller : MonoBehaviour
     private Quaternion initialRotation;
     private Vector3 initialVisualScale;
     private Vector3 initialVisualPosition;
-    private bool _blockRunAndJump = false;
+    private bool _blockRunAndJump = true;
 
     // Componentes
     private CharacterController controller;

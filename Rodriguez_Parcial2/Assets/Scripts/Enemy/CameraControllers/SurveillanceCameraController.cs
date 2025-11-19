@@ -632,7 +632,7 @@ private void SetupRigidbody()
             
             if (enableStateDebug)
             {
-                Debug.Log($"📹 Cámara alertó a: {enemy.GetEnemyName()}");
+//                Debug.Log($"📹 Cámara alertó a: {enemy.GetEnemyName()}");
             }
         }
     }
